@@ -1,132 +1,230 @@
+ALLOCA+ INSTITUTIONAL SOFTWARE LICENSE
+Version 1.0
 
-# LICENSE
+Copyright (c) 2026 Aloca+
+All rights reserved.
 
-```text
-LICENÇA DE USO INSTITUCIONAL — ALOCA+
-Versão 1.0
-
-Copyright © 2026 Aloca+.
-Todos os direitos reservados.
-
-
-1. FINALIDADE
-
-O Aloca+ é um software desenvolvido exclusivamente para utilização interna
-pela E.E. Amador e Catharina Saporito Augusto.
-
-Sua finalidade é auxiliar no cadastro, identificação, retirada, devolução,
-organização e acompanhamento dos equipamentos utilizados pela instituição.
+Licensed exclusively to:
+E.E. Amador e Catharina Saporito Augusto
 
 
-2. AUTORIZAÇÃO DE USO
+1. SCOPE
 
-É concedida autorização de uso do Aloca+ exclusivamente à
+Aloca+ is proprietary software developed specifically for the internal
+operations of E.E. Amador e Catharina Saporito Augusto.
+
+The software is intended to support the registration, identification,
+allocation, checkout, return, tracking, and management of equipment used
+within the institution.
+
+This license grants a limited, non-exclusive, non-transferable right to use
+Aloca+ solely within the institution identified above.
+
+
+2. AUTHORIZED USERS
+
+Aloca+ may be used only by individuals authorized by
+E.E. Amador e Catharina Saporito Augusto, including:
+
+- administrators;
+- teachers;
+- students;
+- employees;
+- technical staff;
+- other individuals expressly authorized by the institution.
+
+Access to specific features, records, and administrative functions may be
+restricted according to each user's assigned role and permissions.
+
+
+3. PERMITTED USE
+
+The institution may install and operate official versions of Aloca+ on
+authorized devices for legitimate educational, administrative, technical,
+equipment-management, and internal testing purposes.
+
+Official APK packages may be distributed internally when necessary for the
+installation, testing, maintenance, or operation of the software.
+
+
+4. RESTRICTIONS
+
+Except with prior written authorization from the project owner, the software
+may not be:
+
+- used by another school, institution, company, organization, or individual;
+- sold, rented, sublicensed, leased, or commercially exploited;
+- publicly redistributed or made available for unrestricted download;
+- repackaged or redistributed as an unofficial version;
+- modified and redistributed as a separate or derivative product;
+- used to impersonate or misrepresent the official Aloca+ project;
+- used to gain unauthorized access to institutional systems or information.
+
+Possession of an APK package, source file, documentation, database structure,
+or any other component of Aloca+ does not constitute authorization to use,
+modify, or redistribute the software.
+
+
+5. SOFTWARE DISTRIBUTION
+
+Distribution of Aloca+ is restricted to authorized internal use by
 E.E. Amador e Catharina Saporito Augusto.
 
-A autorização inclui o uso do aplicativo por estudantes, professores,
-funcionários, administradores e membros da equipe técnica autorizados pela
-instituição.
+The institution may distribute official application packages among its
+authorized users and devices when required for normal operation.
 
-O uso deve estar relacionado às atividades educacionais, administrativas,
-técnicas ou de teste realizadas pela escola.
-
-
-3. RESTRIÇÃO DE USO
-
-Esta licença não concede autorização de uso do Aloca+ a outras instituições.
-
-Outras escolas, empresas, organizações, entidades ou indivíduos não estão
-autorizados a implantar, distribuir ou utilizar o Aloca+ sem autorização
-expressa do responsável pelo projeto.
-
-O acesso ao APK, documentação ou qualquer outro componente do projeto não
-constitui autorização de uso.
+Distribution outside the institution requires prior authorization from the
+project owner.
 
 
-4. DISTRIBUIÇÃO
+6. SOURCE CODE
 
-Os arquivos APK oficiais podem ser distribuídos internamente entre membros
-autorizados da E.E. Amador e Catharina Saporito Augusto para instalação,
-utilização e testes.
+Unless separately authorized, access to the source code does not grant any
+right to publish, redistribute, sublicense, sell, or commercially exploit
+Aloca+ or derivative works based on it.
 
-Não é permitida a distribuição pública, comercialização, sublicenciamento,
-revenda ou disponibilização do aplicativo para outras instituições sem
-autorização prévia.
+The source code and related development materials remain protected works.
 
-
-5. MODIFICAÇÃO
-
-Esta licença não concede autorização para modificar, redistribuir,
-sublicenciar ou publicar versões derivadas do Aloca+.
-
-Qualquer modificação ou utilização fora das condições estabelecidas nesta
-licença depende de autorização prévia do responsável pelo projeto.
+No rights are granted except those expressly stated in this license.
 
 
-6. DADOS
+7. DATA ACCESS AND PRIVACY
 
-As informações armazenadas pelo Aloca+ devem ser utilizadas exclusivamente
-para as atividades autorizadas pela E.E. Amador e Catharina Saporito Augusto.
+Users may access only the information and functionality required by their
+authorized role.
 
-O acesso ao sistema não concede ao usuário direito irrestrito sobre
-informações de estudantes, professores, funcionários, equipamentos ou
-movimentações registradas.
+Information processed by Aloca+, including equipment records, transaction
+history, user information, class information, and institutional records,
+must be used solely for legitimate institutional purposes.
 
-Cada usuário deve acessar somente as informações e funções permitidas pelo
-seu nível de acesso.
+Access to the software does not grant ownership of institutional data or
+permission to extract, disclose, copy, or distribute such information outside
+authorized purposes.
 
-
-7. VERSÕES DE DESENVOLVIMENTO
-
-Versões identificadas como Pre-Alpha, Alpha, Beta, Preview ou Development
-são consideradas versões de desenvolvimento.
-
-Essas versões podem apresentar erros, funcionalidades incompletas,
-incompatibilidades, alterações estruturais ou perda de dados.
-
-Durante essas fases, o Aloca+ não deve ser utilizado como única fonte oficial
-de registro dos equipamentos da instituição.
+The institution remains responsible for defining appropriate user access,
+data-management procedures, and internal privacy practices.
 
 
-8. PROPRIEDADE
+8. DEVELOPMENT AND PRE-RELEASE VERSIONS
 
-O Aloca+, incluindo seu software, identidade, documentação e demais
-componentes do projeto, permanece protegido pelos direitos de seus
-respectivos titulares.
+Versions identified as Pre-Alpha, Alpha, Beta, Preview, Development, Test, or
+similar designations are pre-release software.
 
-Esta licença concede exclusivamente o direito limitado de uso institucional
-à E.E. Amador e Catharina Saporito Augusto.
+Such versions may contain incomplete functionality, defects, compatibility
+issues, database changes, or other unexpected behavior.
 
-Nenhum direito de propriedade é transferido por esta licença.
-
-
-9. GARANTIA
-
-O software é fornecido no estado em que se encontra.
-
-Durante as fases de desenvolvimento não há garantia de funcionamento
-ininterrupto, ausência de erros ou preservação integral dos dados.
-
-É recomendada a manutenção de backups durante os períodos de teste.
+Pre-release versions are intended for evaluation and internal testing and
+should not be relied upon as the sole authoritative record of institutional
+equipment or transactions.
 
 
-10. REVOGAÇÃO
+9. OWNERSHIP
 
-A autorização de uso poderá ser revogada caso o software seja utilizado fora
-das condições estabelecidas nesta licença.
+Aloca+, including its software, application packages, documentation, visual
+identity, architecture, and related project materials, remains the property
+of its respective rights holder.
 
-Usuários que deixarem de possuir autorização da instituição também deixam de
-possuir autorização para acessar seus recursos internos.
+This license grants permission to use the software under the conditions
+defined herein.
+
+No ownership, intellectual property, trademark, or redistribution rights are
+transferred to the institution or its users.
 
 
-11. USOS NÃO AUTORIZADOS
+10. DISCLAIMER OF WARRANTY
 
-Qualquer utilização, implantação, distribuição ou modificação não prevista
-nesta licença depende de autorização prévia do responsável pelo projeto.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE, AVAILABILITY, RELIABILITY, OR NON-INFRINGEMENT.
+
+Development and pre-release versions may contain defects and should be used
+with appropriate backup and verification procedures.
+
+
+11. LIMITATION OF LIABILITY
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE PROJECT OWNER SHALL NOT
+BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR
+OTHER DAMAGES ARISING FROM THE USE OF, INABILITY TO USE, OR RELIANCE UPON
+ALLOCA+.
+
+This includes, without limitation, loss of data, interruption of operations,
+incorrect records, equipment-management errors, or other consequences arising
+from the use of development or production versions of the software.
+
+
+12. SECURITY
+
+Users must not attempt to bypass authentication, authorization, access
+controls, security policies, or other technical restrictions implemented by
+Aloca+.
+
+Credentials and privileged access must not be shared with unauthorized
+individuals.
+
+Security vulnerabilities discovered during use or testing should be reported
+to the project owner or the institution's authorized technical personnel and
+must not be intentionally exploited.
+
+
+13. TERMINATION
+
+The rights granted under this license may be suspended or terminated if the
+software is used in violation of these terms.
+
+An individual's authorization to use Aloca+ ends when that individual is no
+longer authorized by E.E. Amador e Catharina Saporito Augusto.
+
+Upon termination of institutional authorization, unauthorized copies of the
+software must no longer be used.
+
+
+14. THIRD-PARTY COMPONENTS
+
+Aloca+ may incorporate or depend upon third-party software, libraries,
+services, or platforms.
+
+Such components remain subject to their respective licenses and terms.
+
+Nothing in this license modifies or replaces the licensing terms applicable
+to third-party components.
+
+
+15. NO PUBLIC LICENSE
+
+Aloca+ is not released as open-source or public-domain software under this
+license.
+
+Public availability of a repository, application package, documentation, or
+other project material does not waive any rights or convert this license into
+a public software license.
+
+
+16. ADDITIONAL AUTHORIZATION
+
+Any use not expressly permitted by this license requires prior authorization
+from the project owner.
+
+Any authorization granted to another institution or third party must be
+provided separately and does not modify the exclusive institutional scope of
+this license unless explicitly stated.
+
+
+17. ENTIRE LICENSE
+
+This document defines the terms under which Aloca+ is licensed to
+E.E. Amador e Catharina Saporito Augusto.
+
+If any provision is found to be unenforceable, the remaining provisions shall
+continue to apply to the maximum extent permitted by applicable law.
 
 
 Aloca+
+Institutional Software License
+Version 1.0
 2026
 
-Licenciado exclusivamente para:
+Licensed exclusively to:
 E.E. Amador e Catharina Saporito Augusto
+
+All rights reserved.
