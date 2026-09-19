@@ -263,7 +263,11 @@ function openLegal(kind) {
   legalBack.classList.add("legal-document-backdrop");
 }
 async function hasCurrentLegalAcceptance() {
-  const { data, error } = await supabase.rpc("has_current_legal_acceptance", { p_terms_version: config.legalTermsVersion, p_privacy_version: config.privacyVersion });
+  const { data, error } = await withTimeout(
+    supabase.rpc("has_current_legal_acceptance", { p_terms_version: config.legalTermsVersion, p_privacy_version: config.privacyVersion }),
+    STARTUP_TIMEOUT_MS,
+    "aceite dos termos"
+  );
   if (error) { console.warn("Legal acceptance check unavailable", error); return false; }
   return data === true;
 }
@@ -849,7 +853,90 @@ async function openMobileQrScanner() {
 }
 
 async function handleScanAfterLogin(){const token=scanTokenFromUrl();if(!token)return false;const scan=await scanPublic(token);if(!scan){notify("QR inválido ou inativo.","error");return false}state.pendingScan=scan;if(scan.kind==="cart"){state.view="carts";await renderCarts();await openCart(token);return true}const {data,error}=await supabase.from("equipments").select("id").eq("qr_token",token).maybeSingle();if(error||!data)return false;state.view="equipment";await renderEquipment();await openEquipment(data.id);return true}
-async function initSession(session){state.session=session;try{await loadProfile()}catch(error){notify("Sua conta existe, mas o perfil escolar ainda não foi criado.","error");await supabase.auth.signOut();return}const {data:allowed,error:accessError}=await supabase.rpc("equipa_access_allowed");if(accessError||allowed!==true){renderPendingApproval();return}if(!(await ensureLegalAcceptance()))return;if(!(await handleScanAfterLogin()))await renderDashboard()}
-async function boot(){installGlobalContextMenus();const token=scanTokenFromUrl();const {data:{session}}=await supabase.auth.getSession();if(session)await initSession(session);else renderAuth(null);supabase.auth.onAuthStateChange(async(event,sessionNow)=>{if(event==="SIGNED_OUT"||!sessionNow){state.session=null;state.profile=null;renderAuth(null);return}if(event==="SIGNED_IN"&&(!state.session||state.session.user.id!==sessionNow.user.id))await initSession(sessionNow)})}
+const STARTUP_TIMEOUT_MS = 12000;
+let authInitGeneration = 0;
+let authSubscription = null;
 
-boot().catch(error=>{console.error(error);app.innerHTML=`<main class="boot boot-error"><div><strong>Não foi possível abrir o Equipa.</strong><span>${esc(errText(error))}</span></div></main>`});
+function withTimeout(promise, ms = STARTUP_TIMEOUT_MS, label = "operação") {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Tempo limite excedido ao carregar ${label}.`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+function renderStartupError(error) {
+  console.error(error);
+  app.innerHTML = `<main class="boot boot-error"><div class="startup-error-card"><strong>Não foi possível abrir o Equipa.</strong><span>${esc(errText(error))}</span><div class="startup-error-actions"><button class="button primary" id="startup-retry" type="button">Tentar novamente</button><button class="button ghost" id="startup-signout" type="button">Voltar ao login</button></div></div></main>`;
+  qs("#startup-retry")?.addEventListener("click", () => {
+    app.innerHTML = `<main class="boot" aria-label="Carregando"><div class="iphone-loader"><i></i></div></main>`;
+    boot().catch(renderStartupError);
+  });
+  qs("#startup-signout")?.addEventListener("click", async () => {
+    try { await withTimeout(supabase.auth.signOut(), 6000, "saída da conta"); } catch {}
+    state.session = null; state.profile = null; renderAuth(null);
+  });
+}
+
+async function initSession(session) {
+  state.session = session;
+  try {
+    await withTimeout(loadProfile(), STARTUP_TIMEOUT_MS, "perfil escolar");
+  } catch (error) {
+    if (/perfil|row|not found|PGRST116/i.test(String(error?.message || error))) {
+      notify("Sua conta existe, mas o perfil escolar ainda não foi criado.", "error");
+      try { await withTimeout(supabase.auth.signOut(), 6000, "saída da conta"); } catch {}
+      renderAuth(null);
+      return;
+    }
+    throw error;
+  }
+
+  const { data: allowed, error: accessError } = await withTimeout(
+    supabase.rpc("equipa_access_allowed"), STARTUP_TIMEOUT_MS, "permissões da conta"
+  );
+  if (accessError) throw accessError;
+  if (allowed !== true) { renderPendingApproval(); return; }
+
+  const legalAccepted = await ensureLegalAcceptance();
+  if (!legalAccepted) return;
+
+  const handledScan = await withTimeout(handleScanAfterLogin(), STARTUP_TIMEOUT_MS, "QR Code inicial");
+  if (!handledScan) await withTimeout(renderDashboard(), STARTUP_TIMEOUT_MS, "visão geral");
+}
+
+function scheduleSessionInit(sessionNow) {
+  const generation = ++authInitGeneration;
+  // Nunca chama a Data API dentro do callback de onAuthStateChange.
+  // Supabase documenta que isso pode causar deadlock no cliente JS.
+  setTimeout(() => {
+    if (generation !== authInitGeneration) return;
+    initSession(sessionNow).catch(renderStartupError);
+  }, 0);
+}
+
+async function boot() {
+  installGlobalContextMenus();
+  const { data, error } = await withTimeout(supabase.auth.getSession(), STARTUP_TIMEOUT_MS, "sessão");
+  if (error) throw error;
+  const session = data?.session || null;
+  if (session) await initSession(session);
+  else renderAuth(null);
+
+  authSubscription?.unsubscribe?.();
+  const { data: authListener } = supabase.auth.onAuthStateChange((event, sessionNow) => {
+    if (event === "SIGNED_OUT" || !sessionNow) {
+      authInitGeneration++;
+      state.session = null;
+      state.profile = null;
+      renderAuth(null);
+      return;
+    }
+    if (event === "SIGNED_IN" && (!state.session || state.session.user.id !== sessionNow.user.id)) {
+      scheduleSessionInit(sessionNow);
+    }
+  });
+  authSubscription = authListener?.subscription || null;
+}
+
+boot().catch(renderStartupError);

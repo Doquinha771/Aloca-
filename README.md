@@ -89,6 +89,10 @@ Contas novas podem permanecer aguardando aprovação antes de receber acesso ao 
 
 A área de auditoria permite acompanhar eventos relevantes, como alterações no inventário, movimentações, reservas, manutenção, carrinhos, contas e aceites legais. O histórico administrativo é preservado para evitar que a exclusão de um cadastro elimine a rastreabilidade de ações anteriores.
 
+## Hotfix
+
+0.0.13 Hotfix 1: correção do carregamento/autenticação sem alteração de recursos ou banco de dados.
+
 ## Estado do projeto
 
 ```text
