@@ -14,6 +14,6 @@ A migration `supabase/migrations/20260918_dasein_web_bridge_0_0_2.sql` já foi a
 
 ## Versão
 
-0.0.4 — Connected Indicator Dashboard
+0.0.5 — Connected Workspace
 
-Dashboard refeita com indicadores grandes conectados, ocupação integral do desktop e infoboxes próprios do Dasein. Mantém o mesmo Supabase e todas as funções da 0.0.3.
+Retorna à composição da dashboard 0.0.3, remove o painel “Situação atual” e amplia a superfície branca principal para conectar visualmente indicadores, atalhos e movimentações. Mantém os infoboxes próprios do Dasein e o mesmo Supabase.

@@ -263,8 +263,8 @@ async function navigate(view) {
 function metric(label, value, view) { return `<button class="metric" type="button" data-go="${view}"><span>${esc(label)}</span><strong>${Number(value || 0).toLocaleString("pt-BR")}</strong><small>Abrir detalhes</small></button>`; }
 
 async function renderDashboard() {
-  state.view = "dashboard";
-  shell(`<div class="loading">Carregando indicadores…</div>`);
+  state.view = "dashboard"; shell(`<div class="loading">Carregando indicadores…</div>`);
+  const admin = state.profile.role === "admin";
   const base = [
     supabase.from("equipments").select("id", { count: "exact", head: true }).eq("is_active", true),
     supabase.from("equipments").select("id", { count: "exact", head: true }).eq("is_active", true).eq("status", "available"),
@@ -275,26 +275,48 @@ async function renderDashboard() {
   const [total, available, inUse, maintenance, reservations] = (await Promise.all(base)).map(x => x.count || 0);
   const { data: current } = await supabase.rpc("home_withdrawals", { p_query: null });
   const pendingReturns = (current || []).reduce((sum, row) => sum + Number(row.pending_count || 0), 0);
-  const availabilityRate = total ? Math.round((available / total) * 100) : 0;
-  const useRate = total ? Math.round((inUse / total) * 100) : 0;
 
-  const indicator = ({ cls, label, value, note, view, iconName }) => `<button class="indicator-balloon ${cls}" type="button" data-go="${view}"><span class="indicator-top"><span class="indicator-icon">${icon(iconName)}</span><span class="indicator-arrow">↗</span></span><span class="indicator-label">${esc(label)}</span><strong>${Number(value || 0).toLocaleString("pt-BR")}</strong><span class="indicator-note">${esc(note)}</span></button>`;
+  shell(`<section class="dashboard-surface">
+    <div class="dashboard-primary">
+      <div class="section-title-line dashboard-heading">
+        <div><span class="eyebrow">Operação escolar</span><h2>Indicadores</h2></div>
+        <button class="text-action" data-open="equipment">Ver todos</button>
+      </div>
 
-  shell(`<section class="indicator-dashboard">
-    <header class="indicator-dashboard-head">
-      <div><span class="eyebrow">Operação escolar</span><h1>Visão geral</h1><p>Os indicadores são a própria dashboard. Toque em qualquer bloco para abrir os detalhes.</p></div>
-      <span class="dashboard-live"><i></i> Dados atuais</span>
-    </header>
-    <div class="indicator-cloud">
-      ${indicator({ cls:"indicator-total", label:"Inventário ativo", value:total, note:"Todos os equipamentos ativos da escola", view:"equipment", iconName:"equipment" })}
-      ${indicator({ cls:"indicator-available", label:"Disponíveis agora", value:available, note:`${availabilityRate}% do inventário pronto para uso`, view:"equipment", iconName:"dashboard" })}
-      ${indicator({ cls:"indicator-use", label:"Em uso", value:inUse, note:`${useRate}% do inventário em retirada`, view:"withdrawals", iconName:"withdrawals" })}
-      ${indicator({ cls:"indicator-maintenance", label:"Em manutenção", value:maintenance, note:"Equipamentos temporariamente fora de operação", view:state.profile.role === "admin" ? "maintenance" : "equipment", iconName:"maintenance" })}
-      ${indicator({ cls:"indicator-reservations", label:"Reservas ativas", value:reservations, note:"Reservas futuras confirmadas", view:"reservations", iconName:"reservations" })}
-      ${indicator({ cls:"indicator-pending", label:"Devoluções pendentes", value:pendingReturns, note:"Itens em retiradas ainda abertas", view:"withdrawals", iconName:"history" })}
+      <div class="hero-cards">
+        <button class="hero-card hero-card-dark" type="button" data-go="equipment">
+          <span class="hero-card-top"><span>Inventário ativo</span><b>•••</b></span>
+          <strong>${Number(total).toLocaleString("pt-BR")}</strong>
+          <span class="hero-card-bottom"><span>Equipamentos cadastrados</span><span class="hero-card-mark">DASEIN</span></span>
+        </button>
+        <button class="hero-card hero-card-light" type="button" data-go="equipment">
+          <span class="hero-card-top"><span>Disponíveis agora</span><b>•••</b></span>
+          <strong>${Number(available).toLocaleString("pt-BR")}</strong>
+          <span class="hero-card-bottom"><span>${total ? Math.round(available / total * 100) : 0}% do inventário</span><span class="dual-dot"><i></i><i></i></span></span>
+        </button>
+      </div>
+
+      <div class="dashboard-mini-stats" aria-label="Resumo operacional">
+        <button type="button" data-go="withdrawals"><span>Em uso</span><strong>${Number(inUse).toLocaleString("pt-BR")}</strong></button>
+        <button type="button" data-go="${admin ? "maintenance" : "equipment"}"><span>Manutenção</span><strong>${Number(maintenance).toLocaleString("pt-BR")}</strong></button>
+        <button type="button" data-go="reservations"><span>Reservas</span><strong>${Number(reservations).toLocaleString("pt-BR")}</strong></button>
+        <button type="button" data-go="withdrawals"><span>Devoluções pendentes</span><strong>${Number(pendingReturns).toLocaleString("pt-BR")}</strong></button>
+      </div>
+
+      <div class="quick-actions dashboard-actions">
+        <button type="button" class="quick-action primary-action" data-go="equipment"><span>${icon("equipment")}</span><b>Equipamentos</b></button>
+        <button type="button" class="quick-action" data-go="withdrawals"><span>${icon("withdrawals")}</span><b>Retiradas</b></button>
+        <button type="button" class="quick-action" data-go="reservations"><span>${icon("reservations")}</span><b>Reservas</b></button>
+        <button type="button" class="quick-action" data-go="carts"><span>${icon("qr")}</span><b>QR / Carrinhos</b></button>
+      </div>
+
+      <section class="dashboard-activity">
+        <div class="section-title-line activity-title"><div><span class="eyebrow">Movimentação</span><h2>Retiradas recentes</h2></div><button class="text-action" data-open="withdrawals">Ver todas</button></div>
+        <div class="activity-table">${renderWithdrawalRows((current || []).slice(0,6))}</div>
+      </section>
     </div>
   </section>`);
-  qsa("[data-go]").forEach(b => b.addEventListener("click", () => navigate(b.dataset.go)));
+  qsa("[data-go],[data-open]").forEach(b => b.addEventListener("click", () => navigate(b.dataset.go || b.dataset.open)));
 }
 
 function equipmentRows(rows) {

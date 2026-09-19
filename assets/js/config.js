@@ -1,6 +1,6 @@
 window.DASEIN_CONFIG = Object.freeze({
   appName: "Dasein",
-  version: "0.0.4",
+  version: "0.0.5",
   supabaseUrl: "https://oxcfbsrukzfnzkivatsn.supabase.co",
   supabasePublishableKey: "sb_publishable_gu7AVR7fbvPE_GQ4XIW2IQ_iTFAzyne",
   pageSize: 24,
