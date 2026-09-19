@@ -233,27 +233,39 @@ function icon(name) {
 }
 function shell(content) {
   const admin = state.profile?.role === "admin";
+  const mobileMoreItems = `${nav("history","Histórico","history")}${nav("carts","Carrinhos","carts")}${admin ? nav("maintenance","Manutenção","maintenance") + nav("admin","Administração","admin") : ""}`;
   app.innerHTML = `<div class="app-shell">
     <aside class="sidebar" id="sidebar">
-      <div class="sidebar-brand" title="Dasein"><div class="brandmark small">D</div><div class="brand-copy"><strong>Dasein</strong><span>${esc(config.version)}</span></div></div>
+      <div class="sidebar-brand" title="Dasein"><div class="brandmark small">D</div><div class="brand-copy"><strong>Dasein</strong><span>Gestão escolar</span></div></div>
+      <div class="sidebar-context"><span>Ambiente</span><strong>${esc(roleLabel(state.profile?.role))}</strong></div>
       <nav class="nav" aria-label="Navegação principal">
-        ${nav("dashboard","Visão geral","dashboard")}${nav("equipment","Equipamentos","equipment")}${nav("withdrawals","Retiradas","withdrawals")}${nav("reservations","Reservas","reservations")}${nav("history","Histórico","history")}${nav("carts","Carrinhos","carts")}${admin ? nav("maintenance","Manutenção","maintenance") + nav("admin","Administração","admin") : ""}
+        ${nav("dashboard","Início","dashboard")}${nav("equipment","Equipamentos","equipment")}${nav("withdrawals","Retiradas","withdrawals")}${nav("reservations","Reservas","reservations")}${nav("history","Histórico","history")}${nav("carts","Carrinhos","carts")}${admin ? nav("maintenance","Manutenção","maintenance") + nav("admin","Administração","admin") : ""}
       </nav>
       <div class="sidebar-user"><div class="sidebar-user-copy"><strong>${esc(state.profile?.full_name)}</strong><span>${esc(roleLabel(state.profile?.role))}</span></div><button class="nav-icon logout-button" id="logout" title="Sair" aria-label="Sair">${icon("logout")}</button></div>
     </aside>
     <section class="main">
       <header class="topbar">
-        <div class="topbar-greeting"><button class="nav-icon menu-toggle" id="menu" aria-label="Abrir menu">☰</button><div><strong>${esc(greeting())}, ${esc(firstName())}</strong><span>${esc(pageTitle())} · ${esc(roleLabel(state.profile?.role))}</span></div></div>
+        <div class="topbar-greeting"><button class="nav-icon menu-toggle" id="menu" aria-label="Abrir menu">☰</button><div><span class="topbar-kicker">Dasein</span><strong>${esc(pageTitle())}</strong></div></div>
         <form class="global-search" id="global-search-form" role="search"><span>${icon("search")}</span><input id="global-search" type="search" value="${esc(currentGlobalSearchValue())}" placeholder="Pesquisar equipamento, turma, aluno ou manutenção" autocomplete="off"></form>
-        <button class="account-chip" id="account-chip" type="button"><span class="account-avatar">${icon("user")}</span><span><strong>Minha conta</strong><small>${esc(roleLabel(state.profile?.role))}</small></span><b>⌄</b></button>
+        <button class="account-chip" id="account-chip" type="button"><span class="account-avatar">${icon("user")}</span><span><strong>${esc(firstName())}</strong><small>${esc(roleLabel(state.profile?.role))}</small></span><b>⌄</b></button>
       </header>
       <main class="content view-${esc(state.view)}">${content}</main>
     </section>
+    <nav class="mobile-tabbar" aria-label="Navegação do aplicativo">
+      ${mobileNav("dashboard","Início","dashboard")}${mobileNav("equipment","Equipamentos","equipment")}${mobileNav("withdrawals","Retiradas","withdrawals")}${mobileNav("reservations","Reservas","reservations")}<button class="mobile-nav-item" id="mobile-more" type="button"><span>${icon("admin")}</span><small>Mais</small></button>
+    </nav>
+    <div class="mobile-more-backdrop" id="mobile-more-backdrop"><section class="mobile-more-sheet"><div class="mobile-sheet-handle"></div><div class="mobile-sheet-head"><div><span>Mais opções</span><strong>Dasein</strong></div><button class="icon-button" id="mobile-more-close" type="button">×</button></div><div class="mobile-more-list">${mobileMoreItems}</div><button class="mobile-sheet-logout" id="mobile-sheet-logout" type="button">${icon("logout")}<span>Sair da conta</span></button></section></div>
   </div>`;
   qsa("[data-view]").forEach(b => b.addEventListener("click", () => navigate(b.dataset.view)));
   qs("#menu")?.addEventListener("click", () => qs("#sidebar")?.classList.toggle("open"));
   qs("#logout")?.addEventListener("click", () => supabase.auth.signOut());
+  qs("#mobile-sheet-logout")?.addEventListener("click", () => supabase.auth.signOut());
   qs("#account-chip")?.addEventListener("click", () => navigate(admin ? "admin" : "dashboard"));
+  const closeMobileMore = () => qs("#mobile-more-backdrop")?.classList.remove("open");
+  qs("#mobile-more")?.addEventListener("click", () => qs("#mobile-more-backdrop")?.classList.add("open"));
+  qs("#mobile-more-close")?.addEventListener("click", closeMobileMore);
+  qs("#mobile-more-backdrop")?.addEventListener("click", e => { if (e.target?.id === "mobile-more-backdrop") closeMobileMore(); });
+  qsa("#mobile-more-backdrop [data-view]").forEach(b => b.addEventListener("click", closeMobileMore));
   qs("#global-search-form")?.addEventListener("submit", e => {
     e.preventDefault();
     const term = qs("#global-search")?.value.trim() || "";
@@ -262,6 +274,7 @@ function shell(content) {
   });
 }
 function nav(view, label, iconName) { return `<button type="button" class="nav-button ${state.view === view ? "active" : ""}" data-view="${view}" title="${esc(label)}" aria-label="${esc(label)}"><span class="nav-symbol">${icon(iconName)}</span><span class="nav-label">${esc(label)}</span></button>`; }
+function mobileNav(view,label,iconName){return `<button type="button" class="mobile-nav-item ${state.view===view?"active":""}" data-view="${view}"><span>${icon(iconName)}</span><small>${esc(label)}</small></button>`; }
 async function navigate(view) {
   state.view = view; qs("#sidebar")?.classList.remove("open");
   if (view === "equipment") return renderEquipment();
@@ -290,84 +303,55 @@ async function renderDashboard() {
   const [total, available, inUse, maintenance, reservations] = (await Promise.all(base)).map(x => x.count || 0);
   const { data: current } = await supabase.rpc("home_withdrawals", { p_query: null });
   const pendingReturns = (current || []).reduce((sum, row) => sum + Number(row.pending_count || 0), 0);
+  const safeTotal = Math.max(total,1);
+  const availablePct = Math.round(available/safeTotal*100);
+  const inUsePct = Math.round(inUse/safeTotal*100);
+  const maintenancePct = Math.round(maintenance/safeTotal*100);
+  const today = new Intl.DateTimeFormat("pt-BR", { weekday:"long", day:"2-digit", month:"long" }).format(new Date());
 
-  const safeTotal = Math.max(total, 1);
-  const availablePct = Math.round(available / safeTotal * 100);
-  const inUsePct = Math.round(inUse / safeTotal * 100);
-  const maintenancePct = Math.round(maintenance / safeTotal * 100);
-
-  shell(`<section class="bento-dashboard">
-    <header class="dashboard-intro">
-      <div>
-        <span class="eyebrow">Centro de operação</span>
-        <h1>Visão geral</h1>
-        <p>Acompanhe disponibilidade, movimentações e reservas sem disputar espaço com informação que não ajuda.</p>
-      </div>
-      <button class="button dashboard-main-action" type="button" data-open="equipment">Abrir inventário ${icon("equipment")}</button>
+  shell(`<section class="future-home">
+    <header class="future-welcome">
+      <div><span class="future-breadcrumb">Início</span><h1>Olá, ${esc(firstName())}</h1><p>${esc(roleLabel(state.profile.role))} · ${esc(today)}</p></div>
+      <button class="future-profile-button" type="button" data-open="${admin?"admin":"equipment"}"><span>${icon("user")}</span><div><strong>${esc(state.profile.full_name)}</strong><small>Acessar perfil</small></div></button>
     </header>
 
-    <div class="bento-grid">
-      <button class="bento-card bento-inventory" type="button" data-go="equipment">
-        <div class="bento-card-head"><span class="bento-icon">${icon("equipment")}</span><span>Inventário ativo</span><i></i></div>
-        <div class="bento-number">${Number(total).toLocaleString("pt-BR")}</div>
-        <p>equipamentos disponíveis para a operação da escola</p>
-        <div class="inventory-distribution" aria-label="Distribuição do inventário">
-          <span class="dist-available" style="width:${availablePct}%"></span>
-          <span class="dist-use" style="width:${inUsePct}%"></span>
-          <span class="dist-maintenance" style="width:${maintenancePct}%"></span>
-        </div>
-        <div class="inventory-legend"><span><i class="available-dot"></i>${availablePct}% disponíveis</span><span>${Math.max(0,100-availablePct)}% em operação</span></div>
-      </button>
+    <section class="future-status-row" aria-label="Resumo da operação">
+      <button class="future-status-card status-blue" data-go="equipment" type="button"><span class="future-status-icon">${icon("equipment")}</span><div><strong>${Number(available).toLocaleString("pt-BR")}</strong><span>Disponíveis</span></div><small>${availablePct}% do inventário</small></button>
+      <button class="future-status-card status-navy" data-go="withdrawals" type="button"><span class="future-status-icon">${icon("withdrawals")}</span><div><strong>${Number(inUse).toLocaleString("pt-BR")}</strong><span>Em uso</span></div><small>${pendingReturns} devolução(ões) pendente(s)</small></button>
+      <button class="future-status-card status-sky" data-go="reservations" type="button"><span class="future-status-icon">${icon("reservations")}</span><div><strong>${Number(reservations).toLocaleString("pt-BR")}</strong><span>Reservas</span></div><small>Agendamentos confirmados</small></button>
+      <button class="future-status-card status-alert" data-go="${admin?"maintenance":"equipment"}" type="button"><span class="future-status-icon">${icon("maintenance")}</span><div><strong>${Number(maintenance).toLocaleString("pt-BR")}</strong><span>Manutenção</span></div><small>${maintenancePct}% exige atenção</small></button>
+    </section>
 
-      <button class="bento-card bento-available" type="button" data-go="equipment">
-        <div class="bento-card-head"><span>Disponíveis</span><i></i></div>
-        <div class="bento-number">${Number(available).toLocaleString("pt-BR")}</div>
-        <div class="bento-foot"><span>Prontos para uso</span><strong>${availablePct}%</strong></div>
-      </button>
-
-      <button class="bento-card bento-inuse" type="button" data-go="withdrawals">
-        <div class="bento-card-head"><span>Em uso</span><i></i></div>
-        <div class="bento-number">${Number(inUse).toLocaleString("pt-BR")}</div>
-        <div class="bento-foot"><span>Retirados agora</span><strong>${inUsePct}%</strong></div>
-      </button>
-
-      <button class="bento-card bento-maintenance" type="button" data-go="${admin ? "maintenance" : "equipment"}">
-        <div class="bento-card-head"><span>Manutenção</span><i></i></div>
-        <div class="bento-number">${Number(maintenance).toLocaleString("pt-BR")}</div>
-        <div class="bento-foot"><span>Exigem atenção</span><strong>${maintenancePct}%</strong></div>
-      </button>
-
-      <button class="bento-card bento-reservations" type="button" data-go="reservations">
-        <div class="bento-card-head"><span class="bento-icon purple">${icon("reservations")}</span><span>Reservas ativas</span><i></i></div>
-        <div class="bento-number">${Number(reservations).toLocaleString("pt-BR")}</div>
-        <p>agendamentos confirmados aguardando utilização</p>
-      </button>
-
-      <button class="bento-card bento-pending" type="button" data-go="withdrawals">
-        <div class="bento-card-head"><span class="bento-icon dark">${icon("withdrawals")}</span><span>Devoluções pendentes</span><i></i></div>
-        <div class="pending-layout"><div class="bento-number">${Number(pendingReturns).toLocaleString("pt-BR")}</div><span class="pending-badge">Agora</span></div>
-        <p>${pendingReturns ? "Equipamentos ainda aguardando devolução." : "Nenhuma pendência de devolução no momento."}</p>
-      </button>
-
-      <section class="bento-card bento-actions">
-        <div class="bento-section-title"><div><span class="eyebrow">Acesso rápido</span><h2>Ações</h2></div></div>
-        <div class="bento-action-grid">
-          <button type="button" class="bento-action primary-action" data-go="equipment"><span>${icon("equipment")}</span><b>Equipamentos</b><small>Consultar inventário</small></button>
-          <button type="button" class="bento-action" data-go="withdrawals"><span>${icon("withdrawals")}</span><b>Retiradas</b><small>Uso e devolução</small></button>
-          <button type="button" class="bento-action" data-go="reservations"><span>${icon("reservations")}</span><b>Reservas</b><small>Agenda futura</small></button>
-          <button type="button" class="bento-action" data-go="carts"><span>${icon("qr")}</span><b>QR e carrinhos</b><small>Lotes e leitura</small></button>
-        </div>
+    <div class="future-main-grid">
+      <section class="future-module operation-module">
+        <div class="future-module-head"><div><span class="section-overline">OPERAÇÃO</span><h2>Movimentações recentes</h2></div><button class="future-link" data-open="withdrawals">Ver todas</button></div>
+        <div class="future-list">${renderWithdrawalRows((current||[]).slice(0,5))}</div>
       </section>
-
-      <section class="bento-card bento-activity">
-        <div class="bento-section-title activity-title"><div><span class="eyebrow">Movimentação</span><h2>Retiradas recentes</h2></div><button class="text-action" data-open="withdrawals">Ver histórico</button></div>
-        <div class="activity-table">${renderWithdrawalRows((current || []).slice(0,6))}</div>
+      <section class="future-module inventory-module">
+        <div class="future-module-head"><div><span class="section-overline">INVENTÁRIO</span><h2>Situação dos equipamentos</h2></div><button class="future-link" data-open="equipment">Abrir inventário</button></div>
+        <div class="future-inventory-number"><strong>${Number(total).toLocaleString("pt-BR")}</strong><span>equipamentos ativos</span></div>
+        <div class="future-progress"><i class="p-available" style="width:${availablePct}%"></i><i class="p-use" style="width:${inUsePct}%"></i><i class="p-maint" style="width:${maintenancePct}%"></i></div>
+        <div class="future-legend"><span><i class="legend-available"></i>Disponíveis ${available}</span><span><i class="legend-use"></i>Em uso ${inUse}</span><span><i class="legend-maint"></i>Manutenção ${maintenance}</span></div>
       </section>
     </div>
+
+    <section class="future-platforms">
+      <div class="future-section-head"><div><span class="section-overline">ACESSO RÁPIDO</span><h2>Ferramentas do Dasein</h2></div></div>
+      <div class="future-platform-grid">
+        ${futureTile("equipment","Equipamentos","Inventário e QR","equipment")}
+        ${futureTile("withdrawals","Retiradas","Uso e devolução","withdrawals")}
+        ${futureTile("reservations","Reservas","Agenda de equipamentos","reservations")}
+        ${futureTile("carts","Carrinhos","Lotes por QR","carts")}
+        ${futureTile("history","Histórico","Auditoria operacional","history")}
+        ${admin?futureTile("maintenance","Manutenção","Oficina técnica","maintenance"):""}
+        ${admin?futureTile("admin","Administração","Usuários e banco","admin"):""}
+      </div>
+    </section>
   </section>`);
 
   qsa("[data-go],[data-open]").forEach(b => b.addEventListener("click", () => navigate(b.dataset.go || b.dataset.open)));
 }
+function futureTile(view,title,subtitle,iconName){return `<button class="future-platform-tile" type="button" data-go="${view}"><span>${icon(iconName)}</span><div><strong>${esc(title)}</strong><small>${esc(subtitle)}</small></div><b>›</b></button>`;}
 function equipmentRows(rows) {
   if (!rows.length) return `<div class="empty"><strong>Nenhum equipamento.</strong><span>Os registros aparecerão aqui.</span></div>`;
   return `<div class="data-list">${rows.map(e => `<button class="data-row" data-equipment="${esc(e.id)}" type="button"><div class="data-main"><strong>${esc(e.label || e.code)}</strong><span>${esc(e.brand)} ${esc(e.model)} · ${esc(e.asset_tag || e.code)}</span></div><span class="status status-${esc(e.status)}">${esc(statusLabel(e.status))}</span><span class="data-date">${esc(dt(e.updated_at))}</span></button>`).join("")}</div>`;
@@ -445,7 +429,7 @@ async function renderEquipment() {
   const from = state.equipmentPage * config.pageSize;
   const to = from + config.pageSize - 1;
   const filterCount = activeFilterCount([state.equipmentFilters.status, state.equipmentFilters.active]);
-  shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Inventário</span><h2>Equipamentos</h2><p>Consulte, filtre e gerencie os dispositivos cadastrados.</p></div><div class="toolbar-actions">${admin ? `<button class="button ghost" id="import-equipment">Importar</button><button class="button primary" id="new-equipment">Novo equipamento</button>` : ""}</div></div><div class="toolbar workspace-toolbar"><div class="toolbar-cluster"><input class="search" id="equipment-search" type="search" value="${esc(state.equipmentSearch)}" placeholder="Buscar número, patrimônio, nome, marca ou modelo"><button class="filter-button ${filterCount ? 'has-active active' : ''}" id="equipment-filter-toggle" type="button" aria-expanded="${filterCount ? 'true' : 'false'}">${icon("filter")}<span>Filtros</span>${filterBadge(filterCount)}</button></div></div><div class="filter-drawer ${filterCount ? 'open' : ''}" id="equipment-filter-panel"><div class="filter-grid"><label>Estado<select id="equipment-status"><option value="">Todos os estados</option><option value="available" ${state.equipmentFilters.status==='available'?'selected':''}>Disponível</option><option value="in_use" ${state.equipmentFilters.status==='in_use'?'selected':''}>Em uso</option><option value="maintenance" ${state.equipmentFilters.status==='maintenance'?'selected':''}>Manutenção</option><option value="unavailable" ${state.equipmentFilters.status==='unavailable'?'selected':''}>Indisponível</option></select></label><label>Catálogo<select id="equipment-active"><option value="">Todos</option><option value="active" ${state.equipmentFilters.active==='active'?'selected':''}>Apenas ativos</option><option value="inactive" ${state.equipmentFilters.active==='inactive'?'selected':''}>Inativos</option></select></label></div><div class="filter-actions"><button class="button small ghost" id="equipment-filter-clear" type="button">Limpar filtros</button><button class="button primary small" id="equipment-filter-apply" type="button">Aplicar</button></div></div><div id="equipment-results"><div class="loading">Carregando equipamentos…</div></div></section>`);
+  shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Inventário</span><h2>Equipamentos</h2><p>Consulte, filtre e gerencie os dispositivos cadastrados.</p></div><div class="toolbar-actions">${admin ? `<button class="button ghost" id="import-equipment">Importar</button><button class="button primary" id="new-equipment">Novo equipamento</button>` : ""}</div></div><div class="toolbar workspace-toolbar"><div class="toolbar-cluster"><input class="search" id="equipment-search" type="search" value="${esc(state.equipmentSearch)}" placeholder="Buscar número, patrimônio, nome, marca ou modelo"><button class="filter-button ${filterCount ? 'has-active active' : ''}" id="equipment-filter-toggle" type="button" aria-expanded="${filterCount ? 'true' : 'false'}">${icon("filter")}<span>Filtros</span>${filterBadge(filterCount)}</button></div></div><div class="filter-drawer" id="equipment-filter-panel"><div class="filter-grid"><label>Estado<select id="equipment-status"><option value="">Todos os estados</option><option value="available" ${state.equipmentFilters.status==='available'?'selected':''}>Disponível</option><option value="in_use" ${state.equipmentFilters.status==='in_use'?'selected':''}>Em uso</option><option value="maintenance" ${state.equipmentFilters.status==='maintenance'?'selected':''}>Manutenção</option><option value="unavailable" ${state.equipmentFilters.status==='unavailable'?'selected':''}>Indisponível</option></select></label><label>Catálogo<select id="equipment-active"><option value="">Todos</option><option value="active" ${state.equipmentFilters.active==='active'?'selected':''}>Apenas ativos</option><option value="inactive" ${state.equipmentFilters.active==='inactive'?'selected':''}>Inativos</option></select></label></div><div class="filter-actions"><button class="button small ghost" id="equipment-filter-clear" type="button">Limpar filtros</button><button class="button primary small" id="equipment-filter-apply" type="button">Aplicar</button></div></div><div id="equipment-results"><div class="loading">Carregando equipamentos…</div></div></section>`);
   const host = qs("#equipment-results");
   const search = cleanSearch(state.equipmentSearch);
   const usingSmart = Boolean(search || filterCount);
@@ -521,7 +505,7 @@ function openQrModal(token,title,subtitle="") {
 async function renderWithdrawals() {
   state.view="withdrawals";
   const filterCount = activeFilterCount([state.withdrawalsStatus]);
-  shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Operação</span><h2>Retiradas</h2><p>Acompanhe equipamentos em uso e devoluções da escola.</p></div></div><div class="toolbar workspace-toolbar"><div class="toolbar-cluster"><input id="withdrawal-search" class="search" type="search" value="${esc(state.withdrawalsSearch)}" placeholder="Buscar turma, destino, responsável ou equipamento"><button class="filter-button ${filterCount ? 'has-active active' : ''}" id="withdrawal-filter-toggle" type="button" aria-expanded="${filterCount ? 'true' : 'false'}">${icon("filter")}<span>Filtros</span>${filterBadge(filterCount)}</button></div></div><div class="filter-drawer ${filterCount ? 'open' : ''}" id="withdrawal-filter-panel"><div class="filter-grid"><label>Status<select id="withdrawal-status"><option value="">Todos</option><option value="open" ${state.withdrawalsStatus==='open'?'selected':''}>Em aberto</option><option value="returned" ${state.withdrawalsStatus==='returned'?'selected':''}>Devolvida</option><option value="cancelled" ${state.withdrawalsStatus==='cancelled'?'selected':''}>Cancelada</option></select></label></div><div class="filter-actions"><button class="button small ghost" id="withdrawal-filter-clear" type="button">Limpar filtros</button><button class="button primary small" id="withdrawal-filter-apply" type="button">Aplicar</button></div></div><div id="withdrawals"><div class="loading">Carregando retiradas…</div></div></section>`);
+  shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Operação</span><h2>Retiradas</h2><p>Acompanhe equipamentos em uso e devoluções da escola.</p></div></div><div class="toolbar workspace-toolbar"><div class="toolbar-cluster"><input id="withdrawal-search" class="search" type="search" value="${esc(state.withdrawalsSearch)}" placeholder="Buscar turma, destino, responsável ou equipamento"><button class="filter-button ${filterCount ? 'has-active active' : ''}" id="withdrawal-filter-toggle" type="button" aria-expanded="${filterCount ? 'true' : 'false'}">${icon("filter")}<span>Filtros</span>${filterBadge(filterCount)}</button></div></div><div class="filter-drawer" id="withdrawal-filter-panel"><div class="filter-grid"><label>Status<select id="withdrawal-status"><option value="">Todos</option><option value="open" ${state.withdrawalsStatus==='open'?'selected':''}>Em aberto</option><option value="returned" ${state.withdrawalsStatus==='returned'?'selected':''}>Devolvida</option><option value="cancelled" ${state.withdrawalsStatus==='cancelled'?'selected':''}>Cancelada</option></select></label></div><div class="filter-actions"><button class="button small ghost" id="withdrawal-filter-clear" type="button">Limpar filtros</button><button class="button primary small" id="withdrawal-filter-apply" type="button">Aplicar</button></div></div><div id="withdrawals"><div class="loading">Carregando retiradas…</div></div></section>`);
   await loadWithdrawals();
   let timer;
   qs("#withdrawal-search")?.addEventListener("input",e=>{clearTimeout(timer);timer=setTimeout(()=>{state.withdrawalsSearch=e.target.value;loadWithdrawals()},180)});
@@ -543,7 +527,7 @@ function renderWithdrawalRows(rows) { if(!rows.length)return `<div class="empty"
 async function renderReservations() {
   state.view="reservations";
   const filterCount = activeFilterCount([state.reservationsStatus]);
-  shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Agenda</span><h2>Reservas futuras</h2><p>Organize a utilização dos equipamentos sem conflitos de horário.</p></div></div><div class="toolbar workspace-toolbar"><div class="toolbar-cluster"><input id="reservation-search" class="search" type="search" value="${esc(state.reservationsSearch)}" placeholder="Buscar equipamento, turma, destino ou período"><button class="filter-button ${filterCount ? 'has-active active' : ''}" id="reservation-filter-toggle" type="button" aria-expanded="${filterCount ? 'true' : 'false'}">${icon("filter")}<span>Filtros</span>${filterBadge(filterCount)}</button></div></div><div class="filter-drawer ${filterCount ? 'open' : ''}" id="reservation-filter-panel"><div class="filter-grid"><label>Status<select id="reservation-status"><option value="">Todos</option><option value="confirmed" ${state.reservationsStatus==='confirmed'?'selected':''}>Confirmada</option><option value="fulfilled" ${state.reservationsStatus==='fulfilled'?'selected':''}>Utilizada</option><option value="cancelled" ${state.reservationsStatus==='cancelled'?'selected':''}>Cancelada</option><option value="expired" ${state.reservationsStatus==='expired'?'selected':''}>Expirada</option></select></label></div><div class="filter-actions"><button class="button small ghost" id="reservation-filter-clear" type="button">Limpar filtros</button><button class="button primary small" id="reservation-filter-apply" type="button">Aplicar</button></div></div><div id="reservations"><div class="loading">Carregando reservas…</div></div></section>`);
+  shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Agenda</span><h2>Reservas futuras</h2><p>Organize a utilização dos equipamentos sem conflitos de horário.</p></div></div><div class="toolbar workspace-toolbar"><div class="toolbar-cluster"><input id="reservation-search" class="search" type="search" value="${esc(state.reservationsSearch)}" placeholder="Buscar equipamento, turma, destino ou período"><button class="filter-button ${filterCount ? 'has-active active' : ''}" id="reservation-filter-toggle" type="button" aria-expanded="${filterCount ? 'true' : 'false'}">${icon("filter")}<span>Filtros</span>${filterBadge(filterCount)}</button></div></div><div class="filter-drawer" id="reservation-filter-panel"><div class="filter-grid"><label>Status<select id="reservation-status"><option value="">Todos</option><option value="confirmed" ${state.reservationsStatus==='confirmed'?'selected':''}>Confirmada</option><option value="fulfilled" ${state.reservationsStatus==='fulfilled'?'selected':''}>Utilizada</option><option value="cancelled" ${state.reservationsStatus==='cancelled'?'selected':''}>Cancelada</option><option value="expired" ${state.reservationsStatus==='expired'?'selected':''}>Expirada</option></select></label></div><div class="filter-actions"><button class="button small ghost" id="reservation-filter-clear" type="button">Limpar filtros</button><button class="button primary small" id="reservation-filter-apply" type="button">Aplicar</button></div></div><div id="reservations"><div class="loading">Carregando reservas…</div></div></section>`);
   const {data,error}=await supabase.from("reservations").select("id,equipment_id,user_id,class_name,destination,start_at,end_at,notes,status,withdrawal_id,created_at,equipments(code,label,brand,model,status)").order("start_at",{ascending:true}).limit(400);
   const h=qs("#reservations");
   if(error){h.innerHTML=`<div class="empty"><strong>Erro ao carregar.</strong><span>${esc(errText(error))}</span></div>`;return}
@@ -592,7 +576,7 @@ async function renderCarts() {
 async function openCart(token) {const {data,error}=await supabase.rpc("cart_scan_equipment_list",{p_qr_token:token});if(error)return notify(errText(error),"error");const items=data||[];if(!items.length)return notify("Carrinho vazio ou indisponível.","warning");const available=items.filter(x=>x.is_active&&x.status==="available");const m=makeModal(`<div class="panel-head"><div><span class="eyebrow">Carrinho ${items[0].cart_number}</span><h2>${esc(items[0].cart_name||`Carrinho ${items[0].cart_number}`)}</h2></div><button class="icon-button" data-close>×</button></div><div class="modal-body">${equipmentRows(items.map(x=>({id:x.equipment_id,...x})))}<div class="modal-actions"><button class="button ghost" data-cart-qr>QR Code</button>${available.length?`<button class="button primary" data-batch>Retirar ${available.length} disponível(is)</button>`:""}</div></div>`,true);bindEquipmentRowClicks(m);qs("[data-cart-qr]",m)?.addEventListener("click",()=>openQrModal(token,items[0].cart_name||`Carrinho ${items[0].cart_number}`,`${items.length} equipamentos`));qs("[data-batch]",m)?.addEventListener("click",()=>{m.remove();openCheckoutModal(available)});}
 function openCartForm(){const m=makeModal(`<div class="panel-head"><div><span class="eyebrow">Administração</span><h2>Novo carrinho</h2></div><button class="icon-button" data-close>×</button></div><div class="modal-body"><form id="cart-form" class="auth-form"><label>Número<input name="number" type="number" min="1" required></label><label>Nome opcional<input name="name" maxlength="120"></label><label>Códigos dos equipamentos<textarea name="codes" required placeholder="001\n002\n003"></textarea></label><div class="modal-actions"><button class="button" data-close type="button">Cancelar</button><button class="button primary" type="submit">Criar carrinho</button></div></form></div>`);qs("#cart-form",m).addEventListener("submit",async e=>{e.preventDefault();const b=qs('button[type="submit"]',e.currentTarget);setBusy(b,true,"Salvando…");const f=new FormData(e.currentTarget);const codes=[...new Set(f.get("codes").split(/[\n,;]+/).map(x=>x.trim()).filter(Boolean))];const {error}=await supabase.rpc("save_equipment_cart",{p_cart_id:null,p_number:Number(f.get("number")),p_name:f.get("name").trim()||null,p_equipment_codes:codes});setBusy(b,false);if(error)return notify(errText(error),"error");notify("Carrinho criado.","success");m.remove();renderCarts()})}
 
-async function renderMaintenance(){if(state.profile.role!=="admin")return navigate("dashboard");state.view="maintenance";const filterCount=activeFilterCount([state.maintenanceStatus]);shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Oficina</span><h2>Histórico de manutenção</h2><p>Ocorrências técnicas e intervenções ficam organizadas em uma única linha do tempo.</p></div></div><div class="toolbar workspace-toolbar"><div class="toolbar-cluster"><input id="maintenance-search" class="search" type="search" value="${esc(state.maintenanceSearch)}" placeholder="Buscar equipamento, título ou observação"><button class="filter-button ${filterCount ? 'has-active active' : ''}" id="maintenance-filter-toggle" type="button" aria-expanded="${filterCount ? 'true' : 'false'}">${icon("filter")}<span>Filtros</span>${filterBadge(filterCount)}</button></div></div><div class="filter-drawer ${filterCount ? 'open' : ''}" id="maintenance-filter-panel"><div class="filter-grid"><label>Status<select id="maintenance-status"><option value="">Todos</option><option value="open" ${state.maintenanceStatus==='open'?'selected':''}>Aberta</option><option value="resolved" ${state.maintenanceStatus==='resolved'?'selected':''}>Resolvida</option></select></label></div><div class="filter-actions"><button class="button small ghost" id="maintenance-filter-clear" type="button">Limpar filtros</button><button class="button primary small" id="maintenance-filter-apply" type="button">Aplicar</button></div></div><div id="maintenance"><div class="loading">Carregando…</div></div></section>`);const {data,error}=await supabase.from("maintenance_events").select("id,equipment_id,title,notes,resolution,status,opened_at,closed_at,equipments(code,label,brand,model)").order("opened_at",{ascending:false}).limit(300);const h=qs("#maintenance");if(error){h.innerHTML=`<div class="empty"><strong>Erro.</strong><span>${esc(errText(error))}</span></div>`;return}let rows=data||[];rows=smartFilter(rows,state.maintenanceSearch,x=>[x.title,x.notes,x.resolution,x.equipments?.label,x.equipments?.code,x.equipments?.brand,x.equipments?.model,statusLabel(x.status)]);if(state.maintenanceStatus)rows=rows.filter(x=>x.status===state.maintenanceStatus);if(!rows.length){h.innerHTML=`<div class="empty"><strong>Nenhuma manutenção registrada.</strong><span>Abra um equipamento e escolha Manutenção.</span></div>`;}else{h.innerHTML=`<div class="data-list">${rows.map(x=>`<div class="data-row"><div class="data-main"><strong>${esc(x.equipments?.label||x.equipments?.code)} · ${esc(x.title)}</strong><span>${esc(x.equipments?.brand||"")} ${esc(x.equipments?.model||"")} · aberta ${esc(dt(x.opened_at))}</span></div><span class="status status-${esc(x.status)}">${esc(statusLabel(x.status))}</span><div class="row-actions">${x.status==="open"?`<button class="button primary small" data-resolve="${x.id}">Concluir</button>`:""}</div></div>`).join("")}</div>`;qsa("[data-resolve]").forEach(b=>b.addEventListener("click",()=>resolveMaintenance(Number(b.dataset.resolve))));}let timer;qs("#maintenance-search")?.addEventListener("input",e=>{clearTimeout(timer);timer=setTimeout(()=>{state.maintenanceSearch=e.target.value;renderMaintenance()},180)});wireFilterToggle("maintenance-filter-toggle", "maintenance-filter-panel");qs("#maintenance-filter-apply")?.addEventListener("click",()=>{state.maintenanceStatus=qs("#maintenance-status")?.value||"";renderMaintenance()});qs("#maintenance-filter-clear")?.addEventListener("click",()=>{state.maintenanceStatus="";renderMaintenance()});}
+async function renderMaintenance(){if(state.profile.role!=="admin")return navigate("dashboard");state.view="maintenance";const filterCount=activeFilterCount([state.maintenanceStatus]);shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Oficina</span><h2>Histórico de manutenção</h2><p>Ocorrências técnicas e intervenções ficam organizadas em uma única linha do tempo.</p></div></div><div class="toolbar workspace-toolbar"><div class="toolbar-cluster"><input id="maintenance-search" class="search" type="search" value="${esc(state.maintenanceSearch)}" placeholder="Buscar equipamento, título ou observação"><button class="filter-button ${filterCount ? 'has-active active' : ''}" id="maintenance-filter-toggle" type="button" aria-expanded="${filterCount ? 'true' : 'false'}">${icon("filter")}<span>Filtros</span>${filterBadge(filterCount)}</button></div></div><div class="filter-drawer" id="maintenance-filter-panel"><div class="filter-grid"><label>Status<select id="maintenance-status"><option value="">Todos</option><option value="open" ${state.maintenanceStatus==='open'?'selected':''}>Aberta</option><option value="resolved" ${state.maintenanceStatus==='resolved'?'selected':''}>Resolvida</option></select></label></div><div class="filter-actions"><button class="button small ghost" id="maintenance-filter-clear" type="button">Limpar filtros</button><button class="button primary small" id="maintenance-filter-apply" type="button">Aplicar</button></div></div><div id="maintenance"><div class="loading">Carregando…</div></div></section>`);const {data,error}=await supabase.from("maintenance_events").select("id,equipment_id,title,notes,resolution,status,opened_at,closed_at,equipments(code,label,brand,model)").order("opened_at",{ascending:false}).limit(300);const h=qs("#maintenance");if(error){h.innerHTML=`<div class="empty"><strong>Erro.</strong><span>${esc(errText(error))}</span></div>`;return}let rows=data||[];rows=smartFilter(rows,state.maintenanceSearch,x=>[x.title,x.notes,x.resolution,x.equipments?.label,x.equipments?.code,x.equipments?.brand,x.equipments?.model,statusLabel(x.status)]);if(state.maintenanceStatus)rows=rows.filter(x=>x.status===state.maintenanceStatus);if(!rows.length){h.innerHTML=`<div class="empty"><strong>Nenhuma manutenção registrada.</strong><span>Abra um equipamento e escolha Manutenção.</span></div>`;}else{h.innerHTML=`<div class="data-list">${rows.map(x=>`<div class="data-row"><div class="data-main"><strong>${esc(x.equipments?.label||x.equipments?.code)} · ${esc(x.title)}</strong><span>${esc(x.equipments?.brand||"")} ${esc(x.equipments?.model||"")} · aberta ${esc(dt(x.opened_at))}</span></div><span class="status status-${esc(x.status)}">${esc(statusLabel(x.status))}</span><div class="row-actions">${x.status==="open"?`<button class="button primary small" data-resolve="${x.id}">Concluir</button>`:""}</div></div>`).join("")}</div>`;qsa("[data-resolve]").forEach(b=>b.addEventListener("click",()=>resolveMaintenance(Number(b.dataset.resolve))));}let timer;qs("#maintenance-search")?.addEventListener("input",e=>{clearTimeout(timer);timer=setTimeout(()=>{state.maintenanceSearch=e.target.value;renderMaintenance()},180)});wireFilterToggle("maintenance-filter-toggle", "maintenance-filter-panel");qs("#maintenance-filter-apply")?.addEventListener("click",()=>{state.maintenanceStatus=qs("#maintenance-status")?.value||"";renderMaintenance()});qs("#maintenance-filter-clear")?.addEventListener("click",()=>{state.maintenanceStatus="";renderMaintenance()});}
 function resolveMaintenance(id){const m=makeModal(`<div class="panel-head"><div><span class="eyebrow">Manutenção</span><h2>Concluir manutenção</h2></div><button class="icon-button" data-close>×</button></div><div class="modal-body"><form id="resolve-form" class="auth-form"><label>Resolução<textarea name="resolution" maxlength="1200" placeholder="O que foi feito"></textarea></label><div class="modal-actions"><button class="button" data-close type="button">Cancelar</button><button class="button primary" type="submit">Concluir</button></div></form></div>`);qs("#resolve-form",m).addEventListener("submit",async e=>{e.preventDefault();const b=qs('button[type="submit"]',e.currentTarget);setBusy(b,true,"Concluindo…");const f=new FormData(e.currentTarget);const {error}=await supabase.rpc("resolve_maintenance",{p_event_id:id,p_resolution:f.get("resolution").trim()||null});setBusy(b,false);if(error)return notify(errText(error),"error");notify("Manutenção concluída.","success");m.remove();renderMaintenance()})}
 
 async function renderAdmin(){if(state.profile.role!=="admin")return navigate("dashboard");state.view="admin";shell(`<section class="admin-workspace"><div class="admin-titlebar"><div><span class="eyebrow">Administração</span><h2>Central administrativa</h2><p>Usuários, capacidade e ferramentas em uma única superfície de trabalho.</p></div></div><div class="split admin-grid"><section class="panel admin-users"><div class="panel-head"><div><span class="eyebrow">Pessoas</span><h2>Usuários e cargos</h2></div></div><div id="users"><div class="loading">Carregando usuários…</div></div></section><div class="stack admin-side"><section class="panel"><div class="panel-head"><div><span class="eyebrow">500 MB</span><h2>Capacidade do banco</h2></div></div><div id="capacity"><div class="loading">Medindo…</div></div></section><section class="panel"><div class="panel-head"><div><span class="eyebrow">Ferramentas</span><h2>Inventário</h2></div></div><div class="panel-pad quick-grid"><div class="quick-card"><strong>Importar</strong><span>CSV/XLSX é validado no navegador e não fica armazenado.</span><button class="button small" id="admin-import">Importar arquivo</button></div><div class="quick-card"><strong>Exportar</strong><span>Gera XLSX direto no navegador.</span><button class="button small" id="admin-export">Exportar XLSX</button></div><div class="quick-card"><strong>QRs em lote</strong><span>Folha pronta para impressão dos equipamentos ativos.</span><button class="button small" id="admin-qrs">Gerar QRs</button></div></div></section></div></div></section>`);qs("#admin-import").addEventListener("click",openImportModal);qs("#admin-export").addEventListener("click",exportEquipments);qs("#admin-qrs").addEventListener("click",printQrBatch);await Promise.all([loadAdminUsers(),loadCapacity()]);}
