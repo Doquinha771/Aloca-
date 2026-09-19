@@ -7,6 +7,15 @@ const state = {
   view: "dashboard",
   equipmentPage: 0,
   equipmentSearch: "",
+  equipmentFilters: { status: "", active: "" },
+  withdrawalsSearch: "",
+  withdrawalsStatus: "",
+  reservationsSearch: "",
+  reservationsStatus: "",
+  maintenanceSearch: "",
+  maintenanceStatus: "",
+  cartSearch: "",
+  historyFiltersOpen: false,
   pendingScan: null
 };
 
@@ -132,7 +141,7 @@ function renderAuth(scan = null) {
       <span class="auth-version">Dasein ${esc(config.version)} · Web</span>
     </section>
     <section class="auth-side">
-      <div class="auth-card">
+      <div class="auth-card" id="auth-card">
         <span class="eyebrow">Acesso</span><h2>Entrar no Dasein</h2><p>Use sua conta escolar cadastrada.</p>
         ${scan ? `<div class="scan-preview"><span>QR reconhecido · ${esc(scan.kind === "cart" ? "Carrinho" : "Equipamento")}</span><strong>${esc(scan.display_name)}</strong><span>${scan.model ? `${esc(scan.brand || "")} ${esc(scan.model)}` : `${Number(scan.item_count || 0)} equipamento(s)`}</span>${scan.status ? `<span class="status status-${esc(scan.status)}">${esc(statusLabel(scan.status))}</span>` : ""}</div>` : ""}
         <div class="auth-tabs"><button class="auth-tab active" data-tab="login" type="button">Entrar</button><button class="auth-tab" data-tab="signup" type="button">Criar conta</button></div>
@@ -155,9 +164,14 @@ function renderAuth(scan = null) {
   </main>`;
 
   qsa("[data-tab]").forEach(btn => btn.addEventListener("click", () => {
+    const card = qs("#auth-card");
+    card?.classList.remove("flipping");
+    void card?.offsetWidth;
+    card?.classList.add("flipping");
     qsa("[data-tab]").forEach(x => x.classList.toggle("active", x === btn));
     qs("#login-form").classList.toggle("hidden", btn.dataset.tab !== "login");
     qs("#signup-form").classList.toggle("hidden", btn.dataset.tab !== "signup");
+    setTimeout(() => card?.classList.remove("flipping"), 760);
   }));
   qsa("[data-legal]").forEach(btn => btn.addEventListener("click", () => openLegal(btn.dataset.legal)));
 
@@ -212,7 +226,8 @@ function icon(name) {
     logout: '<path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4M14 8l4 4-4 4M18 12H9"/>',
     search: '<circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/>',
     user: '<circle cx="12" cy="8" r="3.2"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/>',
-    qr: '<rect x="4" y="4" width="6" height="6"/><rect x="14" y="4" width="6" height="6"/><rect x="4" y="14" width="6" height="6"/><path d="M14 14h2v2h-2zM18 14h2v4h-2zM14 18h4v2h-4z"/>'
+    qr: '<rect x="4" y="4" width="6" height="6"/><rect x="14" y="4" width="6" height="6"/><rect x="4" y="14" width="6" height="6"/><path d="M14 14h2v2h-2zM18 14h2v4h-2zM14 18h4v2h-4z"/>',
+    filter: '<path d="M4 6h16M7 12h10M10 18h4"/>'
   };
   return `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths[name] || paths.dashboard}</svg>`;
 }
@@ -229,7 +244,7 @@ function shell(content) {
     <section class="main">
       <header class="topbar">
         <div class="topbar-greeting"><button class="nav-icon menu-toggle" id="menu" aria-label="Abrir menu">☰</button><div><strong>${esc(greeting())}, ${esc(firstName())}</strong><span>${esc(pageTitle())} · ${esc(roleLabel(state.profile?.role))}</span></div></div>
-        <form class="global-search" id="global-search-form" role="search"><span>${icon("search")}</span><input id="global-search" type="search" placeholder="Pesquisar equipamentos" autocomplete="off"></form>
+        <form class="global-search" id="global-search-form" role="search"><span>${icon("search")}</span><input id="global-search" type="search" value="${esc(currentGlobalSearchValue())}" placeholder="Pesquisar equipamento, turma, aluno ou manutenção" autocomplete="off"></form>
         <button class="account-chip" id="account-chip" type="button"><span class="account-avatar">${icon("user")}</span><span><strong>Minha conta</strong><small>${esc(roleLabel(state.profile?.role))}</small></span><b>⌄</b></button>
       </header>
       <main class="content view-${esc(state.view)}">${content}</main>
@@ -243,9 +258,7 @@ function shell(content) {
     e.preventDefault();
     const term = qs("#global-search")?.value.trim() || "";
     if (!term) return;
-    state.equipmentSearch = term;
-    state.equipmentPage = 0;
-    navigate("equipment");
+    runSmartGlobalSearch(term);
   });
 }
 function nav(view, label, iconName) { return `<button type="button" class="nav-button ${state.view === view ? "active" : ""}" data-view="${view}" title="${esc(label)}" aria-label="${esc(label)}"><span class="nav-symbol">${icon(iconName)}</span><span class="nav-label">${esc(label)}</span></button>`; }
@@ -360,18 +373,115 @@ function equipmentRows(rows) {
   return `<div class="data-list">${rows.map(e => `<button class="data-row" data-equipment="${esc(e.id)}" type="button"><div class="data-main"><strong>${esc(e.label || e.code)}</strong><span>${esc(e.brand)} ${esc(e.model)} · ${esc(e.asset_tag || e.code)}</span></div><span class="status status-${esc(e.status)}">${esc(statusLabel(e.status))}</span><span class="data-date">${esc(dt(e.updated_at))}</span></button>`).join("")}</div>`;
 }
 function bindEquipmentRowClicks(root = document) { qsa("[data-equipment]", root).forEach(r => r.addEventListener("click", () => openEquipment(r.dataset.equipment))); }
-function cleanSearch(value) { return value.replace(/[,%()]/g, " ").trim().slice(0,80); }
+function cleanSearch(value) { return String(value || "").replace(/[,%()]/g, " ").trim().slice(0,80); }
+function normalizeSearchText(value = "") {
+  return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+function searchTokens(value = "") { return normalizeSearchText(value).split(/\s+/).filter(Boolean).slice(0, 8); }
+function smartScore(fields, query) {
+  const normalizedFields = fields.map(normalizeSearchText).filter(Boolean);
+  const joined = normalizedFields.join(" ");
+  const normalizedQuery = normalizeSearchText(query);
+  const tokens = searchTokens(query);
+  if (!tokens.length) return 1;
+  let score = 0;
+  for (const token of tokens) {
+    let tokenScore = 0;
+    for (const field of normalizedFields) {
+      if (!field) continue;
+      if (field === token) tokenScore = Math.max(tokenScore, 120);
+      else if (field.startsWith(token)) tokenScore = Math.max(tokenScore, 90);
+      else if (field.includes(` ${token}`)) tokenScore = Math.max(tokenScore, 62);
+      else if (field.includes(token)) tokenScore = Math.max(tokenScore, 42);
+    }
+    if (!tokenScore && joined.includes(token)) tokenScore = 26;
+    if (!tokenScore) return 0;
+    score += tokenScore;
+  }
+  if (normalizedQuery && joined === normalizedQuery) score += 110;
+  else if (normalizedQuery && joined.startsWith(normalizedQuery)) score += 45;
+  return score;
+}
+function smartFilter(rows, query, fieldsGetter) {
+  const q = cleanSearch(query || "");
+  if (!q) return rows;
+  return rows.map(row => ({ row, score: smartScore(fieldsGetter(row), q) })).filter(x => x.score > 0).sort((a, b) => b.score - a.score).map(x => x.row);
+}
+function activeFilterCount(values = []) { return values.filter(v => v !== null && v !== undefined && String(v).trim() !== "").length; }
+function filterBadge(count) { return count ? `<span class="filter-count">${count}</span>` : ""; }
+function wireFilterToggle(toggleId, panelId) {
+  const btn = qs(`#${toggleId}`); const panel = qs(`#${panelId}`);
+  if (!btn || !panel) return;
+  btn.addEventListener("click", () => {
+    const open = panel.classList.toggle("open");
+    btn.classList.toggle("active", open);
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+}
+function currentGlobalSearchValue() { return ({ equipment: state.equipmentSearch, withdrawals: state.withdrawalsSearch, reservations: state.reservationsSearch, maintenance: state.maintenanceSearch, carts: state.cartSearch })[state.view] || ""; }
+function routeFromSearch(query) {
+  const q = normalizeSearchText(query);
+  if (!q) return "equipment";
+  if (/carrinho|lote|qr/.test(q)) return "carts";
+  if (/manut|oficina|conserto/.test(q)) return "maintenance";
+  if (/reserva|agenda/.test(q)) return "reservations";
+  if ((/usuario|usuário|cargo|banco|capacidade/.test(q)) && state.profile?.role === "admin") return "admin";
+  if (/retirada|devolu|turma|aluno|destino|responsavel/.test(q)) return "withdrawals";
+  return "equipment";
+}
+function runSmartGlobalSearch(query) {
+  const term = cleanSearch(query || "");
+  const view = routeFromSearch(term);
+  if (view === "equipment") { state.equipmentSearch = term; state.equipmentPage = 0; }
+  else if (view === "withdrawals") state.withdrawalsSearch = term;
+  else if (view === "reservations") state.reservationsSearch = term;
+  else if (view === "maintenance") state.maintenanceSearch = term;
+  else if (view === "carts") state.cartSearch = term;
+  navigate(view);
+}
 async function renderEquipment() {
-  state.view = "equipment"; const admin = state.profile.role === "admin"; const from = state.equipmentPage * config.pageSize; const to = from + config.pageSize - 1;
-  shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Inventário</span><h2>Equipamentos</h2><p>Consulte, filtre e gerencie os dispositivos cadastrados.</p></div><div class="toolbar-actions">${admin ? `<button class="button ghost" id="import-equipment">Importar</button><button class="button primary" id="new-equipment">Novo equipamento</button>` : ""}</div></div><div class="toolbar workspace-toolbar"><input class="search" id="equipment-search" type="search" value="${esc(state.equipmentSearch)}" placeholder="Buscar número, patrimônio, nome, marca ou modelo"></div><div id="equipment-results"><div class="loading">Carregando equipamentos…</div></div></section>`);
-  let query = supabase.from("equipments").select("id,code,asset_tag,brand,model,label,status,is_active,created_at,updated_at,qr_token", { count: "exact" }).order("code").range(from,to);
-  const search = cleanSearch(state.equipmentSearch); if (search) query = query.or(`code.ilike.%${search}%,asset_tag.ilike.%${search}%,label.ilike.%${search}%,brand.ilike.%${search}%,model.ilike.%${search}%`);
-  const { data, count, error } = await query; const host = qs("#equipment-results");
+  state.view = "equipment";
+  const admin = state.profile.role === "admin";
+  const from = state.equipmentPage * config.pageSize;
+  const to = from + config.pageSize - 1;
+  const filterCount = activeFilterCount([state.equipmentFilters.status, state.equipmentFilters.active]);
+  shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Inventário</span><h2>Equipamentos</h2><p>Consulte, filtre e gerencie os dispositivos cadastrados.</p></div><div class="toolbar-actions">${admin ? `<button class="button ghost" id="import-equipment">Importar</button><button class="button primary" id="new-equipment">Novo equipamento</button>` : ""}</div></div><div class="toolbar workspace-toolbar"><div class="toolbar-cluster"><input class="search" id="equipment-search" type="search" value="${esc(state.equipmentSearch)}" placeholder="Buscar número, patrimônio, nome, marca ou modelo"><button class="filter-button ${filterCount ? 'has-active active' : ''}" id="equipment-filter-toggle" type="button" aria-expanded="${filterCount ? 'true' : 'false'}">${icon("filter")}<span>Filtros</span>${filterBadge(filterCount)}</button></div></div><div class="filter-drawer ${filterCount ? 'open' : ''}" id="equipment-filter-panel"><div class="filter-grid"><label>Estado<select id="equipment-status"><option value="">Todos os estados</option><option value="available" ${state.equipmentFilters.status==='available'?'selected':''}>Disponível</option><option value="in_use" ${state.equipmentFilters.status==='in_use'?'selected':''}>Em uso</option><option value="maintenance" ${state.equipmentFilters.status==='maintenance'?'selected':''}>Manutenção</option><option value="unavailable" ${state.equipmentFilters.status==='unavailable'?'selected':''}>Indisponível</option></select></label><label>Catálogo<select id="equipment-active"><option value="">Todos</option><option value="active" ${state.equipmentFilters.active==='active'?'selected':''}>Apenas ativos</option><option value="inactive" ${state.equipmentFilters.active==='inactive'?'selected':''}>Inativos</option></select></label></div><div class="filter-actions"><button class="button small ghost" id="equipment-filter-clear" type="button">Limpar filtros</button><button class="button primary small" id="equipment-filter-apply" type="button">Aplicar</button></div></div><div id="equipment-results"><div class="loading">Carregando equipamentos…</div></div></section>`);
+  const host = qs("#equipment-results");
+  const search = cleanSearch(state.equipmentSearch);
+  const usingSmart = Boolean(search || filterCount);
+  let rows = [];
+  let count = 0;
+  let error = null;
+  if (usingSmart) {
+    const result = await supabase.from("equipments").select("id,code,asset_tag,brand,model,label,status,is_active,created_at,updated_at,qr_token").order("code").limit(2000);
+    error = result.error;
+    rows = result.data || [];
+    if (!error) {
+      if (state.equipmentFilters.status) rows = rows.filter(r => r.status === state.equipmentFilters.status);
+      if (state.equipmentFilters.active === "active") rows = rows.filter(r => r.is_active);
+      if (state.equipmentFilters.active === "inactive") rows = rows.filter(r => !r.is_active);
+      rows = smartFilter(rows, search, r => [r.code, r.asset_tag, r.label, r.brand, r.model, statusLabel(r.status), r.is_active ? 'ativo' : 'inativo']);
+      count = rows.length;
+      rows = rows.slice(from, to + 1);
+    }
+  } else {
+    const result = await supabase.from("equipments").select("id,code,asset_tag,brand,model,label,status,is_active,created_at,updated_at,qr_token", { count: "exact" }).order("code").range(from, to);
+    rows = result.data || [];
+    count = result.count || 0;
+    error = result.error;
+  }
   if (error) host.innerHTML = `<div class="empty"><strong>Não foi possível carregar.</strong><span>${esc(errText(error))}</span></div>`;
-  else { host.innerHTML = `${equipmentRows(data||[])}<div class="pagination"><span>${count||0} registro(s)</span><div><button class="button small" id="prev" ${state.equipmentPage===0?"disabled":""}>Anterior</button><button class="button small" id="next" ${to+1>=(count||0)?"disabled":""}>Próxima</button></div></div>`; bindEquipmentRowClicks(host); }
-  qs("#prev")?.addEventListener("click",()=>{state.equipmentPage--;renderEquipment()}); qs("#next")?.addEventListener("click",()=>{state.equipmentPage++;renderEquipment()});
-  let timer; qs("#equipment-search")?.addEventListener("input", e => { clearTimeout(timer); timer=setTimeout(()=>{state.equipmentSearch=e.target.value;state.equipmentPage=0;renderEquipment()},220); });
-  qs("#new-equipment")?.addEventListener("click",()=>openEquipmentForm()); qs("#import-equipment")?.addEventListener("click",openImportModal);
+  else host.innerHTML = `${equipmentRows(rows || [])}<div class="pagination"><span>${count || 0} registro(s)</span><div><button class="button small" id="prev" ${state.equipmentPage===0?"disabled":""}>Anterior</button><button class="button small" id="next" ${to+1>=(count||0)?"disabled":""}>Próxima</button></div></div>`;
+  bindEquipmentRowClicks(host);
+  qs("#prev")?.addEventListener("click",()=>{state.equipmentPage--;renderEquipment()});
+  qs("#next")?.addEventListener("click",()=>{state.equipmentPage++;renderEquipment()});
+  let timer;
+  qs("#equipment-search")?.addEventListener("input", e => { clearTimeout(timer); timer=setTimeout(()=>{state.equipmentSearch=e.target.value;state.equipmentPage=0;renderEquipment()},180); });
+  wireFilterToggle("equipment-filter-toggle", "equipment-filter-panel");
+  qs("#equipment-filter-apply")?.addEventListener("click", () => { state.equipmentFilters.status = qs("#equipment-status")?.value || ""; state.equipmentFilters.active = qs("#equipment-active")?.value || ""; state.equipmentPage = 0; renderEquipment(); });
+  qs("#equipment-filter-clear")?.addEventListener("click", () => { state.equipmentFilters = { status: "", active: "" }; state.equipmentPage = 0; renderEquipment(); });
+  qs("#new-equipment")?.addEventListener("click",()=>openEquipmentForm());
+  qs("#import-equipment")?.addEventListener("click",openImportModal);
 }
 async function getEquipment(id) { const { data, error } = await supabase.from("equipments").select("*").eq("id",id).single(); if(error) throw error; return data; }
 async function openEquipment(id) {
@@ -409,33 +519,80 @@ function openQrModal(token,title,subtitle="") {
 }
 
 async function renderWithdrawals() {
-  state.view="withdrawals"; shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Operação</span><h2>Retiradas</h2><p>Acompanhe equipamentos em uso e devoluções da escola.</p></div></div><div class="toolbar workspace-toolbar"><input id="withdrawal-search" class="search" type="search" placeholder="Buscar turma, destino, responsável ou equipamento"></div><div id="withdrawals"><div class="loading">Carregando retiradas…</div></div></section>`);
-  await loadWithdrawals(""); let timer; qs("#withdrawal-search").addEventListener("input",e=>{clearTimeout(timer);timer=setTimeout(()=>loadWithdrawals(cleanSearch(e.target.value)),220)});
+  state.view="withdrawals";
+  const filterCount = activeFilterCount([state.withdrawalsStatus]);
+  shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Operação</span><h2>Retiradas</h2><p>Acompanhe equipamentos em uso e devoluções da escola.</p></div></div><div class="toolbar workspace-toolbar"><div class="toolbar-cluster"><input id="withdrawal-search" class="search" type="search" value="${esc(state.withdrawalsSearch)}" placeholder="Buscar turma, destino, responsável ou equipamento"><button class="filter-button ${filterCount ? 'has-active active' : ''}" id="withdrawal-filter-toggle" type="button" aria-expanded="${filterCount ? 'true' : 'false'}">${icon("filter")}<span>Filtros</span>${filterBadge(filterCount)}</button></div></div><div class="filter-drawer ${filterCount ? 'open' : ''}" id="withdrawal-filter-panel"><div class="filter-grid"><label>Status<select id="withdrawal-status"><option value="">Todos</option><option value="open" ${state.withdrawalsStatus==='open'?'selected':''}>Em aberto</option><option value="returned" ${state.withdrawalsStatus==='returned'?'selected':''}>Devolvida</option><option value="cancelled" ${state.withdrawalsStatus==='cancelled'?'selected':''}>Cancelada</option></select></label></div><div class="filter-actions"><button class="button small ghost" id="withdrawal-filter-clear" type="button">Limpar filtros</button><button class="button primary small" id="withdrawal-filter-apply" type="button">Aplicar</button></div></div><div id="withdrawals"><div class="loading">Carregando retiradas…</div></div></section>`);
+  await loadWithdrawals();
+  let timer;
+  qs("#withdrawal-search")?.addEventListener("input",e=>{clearTimeout(timer);timer=setTimeout(()=>{state.withdrawalsSearch=e.target.value;loadWithdrawals()},180)});
+  wireFilterToggle("withdrawal-filter-toggle", "withdrawal-filter-panel");
+  qs("#withdrawal-filter-apply")?.addEventListener("click", () => { state.withdrawalsStatus = qs("#withdrawal-status")?.value || ""; loadWithdrawals(); });
+  qs("#withdrawal-filter-clear")?.addEventListener("click", () => { state.withdrawalsStatus = ""; loadWithdrawals(); });
 }
-async function loadWithdrawals(search) { const {data,error}=await supabase.rpc("home_withdrawals",{p_query:search||null});const h=qs("#withdrawals");if(!h)return;if(error)h.innerHTML=`<div class="empty"><strong>Erro ao carregar.</strong><span>${esc(errText(error))}</span></div>`;else h.innerHTML=renderWithdrawalRows(data||[]); }
+async function loadWithdrawals() {
+  const {data,error}=await supabase.rpc("home_withdrawals",{p_query:null});
+  const h=qs("#withdrawals"); if(!h) return;
+  if(error){ h.innerHTML=`<div class="empty"><strong>Erro ao carregar.</strong><span>${esc(errText(error))}</span></div>`; return; }
+  let rows = data || [];
+  rows = smartFilter(rows, state.withdrawalsSearch, r => [r.class_name, r.destination, r.responsible_name, r.student_name, r.status, statusLabel(r.status)]);
+  if (state.withdrawalsStatus) rows = rows.filter(r => r.status === state.withdrawalsStatus);
+  h.innerHTML = renderWithdrawalRows(rows);
+}
 function renderWithdrawalRows(rows) { if(!rows.length)return `<div class="empty"><strong>Nenhuma retirada encontrada.</strong><span>As movimentações compatíveis com seu perfil aparecem aqui.</span></div>`;return `<div class="data-list">${rows.map(r=>`<div class="data-row"><div class="data-main"><strong>${esc(r.class_name||"Sem turma")} · ${esc(r.destination||"Sem destino")}</strong><span>${esc(r.responsible_name||"")}${r.student_name?` · Aluno: ${esc(r.student_name)}`:""} · ${Number(r.pending_count||0)} pendente(s) de ${Number(r.total_count||0)}</span></div><span class="status status-${esc(r.status)}">${esc(statusLabel(r.status))}</span><span class="data-date">${esc(dt(r.withdrawn_at))}</span></div>`).join("")}</div>`; }
 
 async function renderReservations() {
-  state.view="reservations"; shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Agenda</span><h2>Reservas futuras</h2><p>Organize a utilização dos equipamentos sem conflitos de horário.</p></div></div><div id="reservations"><div class="loading">Carregando reservas…</div></div></section>`);
-  const {data,error}=await supabase.from("reservations").select("id,equipment_id,user_id,class_name,destination,start_at,end_at,notes,status,withdrawal_id,created_at,equipments(code,label,brand,model,status)").order("start_at",{ascending:true}).limit(300);const h=qs("#reservations");if(error){h.innerHTML=`<div class="empty"><strong>Erro ao carregar.</strong><span>${esc(errText(error))}</span></div>`;return}if(!data?.length){h.innerHTML=`<div class="empty"><strong>Nenhuma reserva.</strong><span>Abra um equipamento disponível e escolha Reservar.</span></div>`;return}
-  h.innerHTML=`<div class="data-list">${data.map(r=>{const expired=r.status==="confirmed"&&new Date(r.end_at)<new Date();const st=expired?"expired":r.status;return `<div class="data-row"><div class="data-main"><strong>${esc(r.equipments?.label||r.equipments?.code||"Equipamento")}</strong><span>${esc(r.class_name)} · ${esc(r.destination)} · ${esc(dt(r.start_at))} até ${esc(dt(r.end_at))}</span></div><span class="status status-${esc(st)}">${esc(statusLabel(st))}</span><div class="row-actions">${r.status==="confirmed"&&!expired?`<button class="button small" data-cancel-res="${r.id}">Cancelar</button><button class="button primary small" data-use-res="${r.id}">Retirar</button>`:""}</div></div>`}).join("")}</div>`;
+  state.view="reservations";
+  const filterCount = activeFilterCount([state.reservationsStatus]);
+  shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Agenda</span><h2>Reservas futuras</h2><p>Organize a utilização dos equipamentos sem conflitos de horário.</p></div></div><div class="toolbar workspace-toolbar"><div class="toolbar-cluster"><input id="reservation-search" class="search" type="search" value="${esc(state.reservationsSearch)}" placeholder="Buscar equipamento, turma, destino ou período"><button class="filter-button ${filterCount ? 'has-active active' : ''}" id="reservation-filter-toggle" type="button" aria-expanded="${filterCount ? 'true' : 'false'}">${icon("filter")}<span>Filtros</span>${filterBadge(filterCount)}</button></div></div><div class="filter-drawer ${filterCount ? 'open' : ''}" id="reservation-filter-panel"><div class="filter-grid"><label>Status<select id="reservation-status"><option value="">Todos</option><option value="confirmed" ${state.reservationsStatus==='confirmed'?'selected':''}>Confirmada</option><option value="fulfilled" ${state.reservationsStatus==='fulfilled'?'selected':''}>Utilizada</option><option value="cancelled" ${state.reservationsStatus==='cancelled'?'selected':''}>Cancelada</option><option value="expired" ${state.reservationsStatus==='expired'?'selected':''}>Expirada</option></select></label></div><div class="filter-actions"><button class="button small ghost" id="reservation-filter-clear" type="button">Limpar filtros</button><button class="button primary small" id="reservation-filter-apply" type="button">Aplicar</button></div></div><div id="reservations"><div class="loading">Carregando reservas…</div></div></section>`);
+  const {data,error}=await supabase.from("reservations").select("id,equipment_id,user_id,class_name,destination,start_at,end_at,notes,status,withdrawal_id,created_at,equipments(code,label,brand,model,status)").order("start_at",{ascending:true}).limit(400);
+  const h=qs("#reservations");
+  if(error){h.innerHTML=`<div class="empty"><strong>Erro ao carregar.</strong><span>${esc(errText(error))}</span></div>`;return}
+  let rows = data || [];
+  rows = rows.map(r => ({ ...r, computed_status: r.status === 'confirmed' && new Date(r.end_at) < new Date() ? 'expired' : r.status }));
+  rows = smartFilter(rows, state.reservationsSearch, r => [r.equipments?.label, r.equipments?.code, r.class_name, r.destination, r.notes, statusLabel(r.computed_status), dt(r.start_at), dt(r.end_at)]);
+  if (state.reservationsStatus) rows = rows.filter(r => r.computed_status === state.reservationsStatus);
+  if(!rows.length){h.innerHTML=`<div class="empty"><strong>Nenhuma reserva.</strong><span>Abra um equipamento disponível e escolha Reservar.</span></div>`;} else {
+    h.innerHTML=`<div class="data-list">${rows.map(r=>{const st=r.computed_status;const expired=st==='expired';return `<div class="data-row"><div class="data-main"><strong>${esc(r.equipments?.label||r.equipments?.code||"Equipamento")}</strong><span>${esc(r.class_name)} · ${esc(r.destination)} · ${esc(dt(r.start_at))} até ${esc(dt(r.end_at))}</span></div><span class="status status-${esc(st)}">${esc(statusLabel(st))}</span><div class="row-actions">${r.status==="confirmed"&&!expired?`<button class="button small" data-cancel-res="${r.id}">Cancelar</button><button class="button primary small" data-use-res="${r.id}">Retirar</button>`:""}</div></div>`}).join("")}</div>`;
+  }
+  let timer; qs("#reservation-search")?.addEventListener("input", e => { clearTimeout(timer); timer=setTimeout(()=>{state.reservationsSearch=e.target.value; renderReservations();}, 180); });
+  wireFilterToggle("reservation-filter-toggle", "reservation-filter-panel");
+  qs("#reservation-filter-apply")?.addEventListener("click", () => { state.reservationsStatus = qs("#reservation-status")?.value || ""; renderReservations(); });
+  qs("#reservation-filter-clear")?.addEventListener("click", () => { state.reservationsStatus = ""; renderReservations(); });
   qsa("[data-cancel-res]").forEach(b=>b.addEventListener("click",async()=>{const ok=await confirmAction({title:"Cancelar reserva?",message:"O horário ficará disponível novamente para este equipamento.",confirmText:"Cancelar reserva",danger:true});if(!ok)return;setBusy(b,true,"…");const {error}=await supabase.rpc("cancel_reservation",{p_reservation_id:Number(b.dataset.cancelRes)});setBusy(b,false);if(error)return notify(errText(error),"error");notify("Reserva cancelada.","success");renderReservations()}));
   qsa("[data-use-res]").forEach(b=>b.addEventListener("click",async()=>{setBusy(b,true,"Retirando…");const {error}=await supabase.rpc("checkout_reservation",{p_reservation_id:Number(b.dataset.useRes),p_client_action_id:uid()});setBusy(b,false);if(error)return notify(errText(error),"error");notify("Reserva convertida em retirada.","success");navigate("withdrawals")}));
 }
 
 async function renderHistory() {
-  state.view="history"; shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Auditoria operacional</span><h2>Histórico</h2><p>Pesquise movimentações por equipamento, aluno, turma ou estado.</p></div></div><div class="filters connected-filters"><input id="h-equipment" placeholder="Equipamento/patrimônio"><input id="h-student" placeholder="Aluno"><input id="h-class" placeholder="Turma"><select id="h-status"><option value="">Todos os estados</option><option value="open">Em aberto</option><option value="returned">Devolvido</option><option value="cancelled">Cancelado</option></select></div><div class="toolbar workspace-toolbar history-toolbar"><span class="muted">Últimos ${config.historyLimit} eventos por consulta</span><button class="button primary small" id="history-filter">Filtrar</button></div><div id="history"><div class="loading">Carregando histórico…</div></div></section>`);
-  qs("#history-filter").addEventListener("click",loadHistory); await loadHistory();
+  state.view="history";
+  shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Auditoria operacional</span><h2>Histórico</h2><p>Pesquise movimentações por equipamento, aluno, turma ou estado.</p></div></div><div class="toolbar workspace-toolbar"><div class="toolbar-cluster"><input id="history-smart" class="search" type="search" placeholder="Buscar equipamento, aluno, turma ou destino"><button class="filter-button ${state.historyFiltersOpen ? 'active' : ''}" id="history-filter-toggle" type="button" aria-expanded="${state.historyFiltersOpen ? 'true' : 'false'}">${icon("filter")}<span>Filtros</span></button></div></div><div class="filter-drawer ${state.historyFiltersOpen ? 'open' : ''}" id="history-filter-panel"><div class="filter-grid"><label>Equipamento/patrimônio<input id="h-equipment" placeholder="Equipamento/patrimônio"></label><label>Aluno<input id="h-student" placeholder="Aluno"></label><label>Turma<input id="h-class" placeholder="Turma"></label><label>Status<select id="h-status"><option value="">Todos os estados</option><option value="open">Em aberto</option><option value="returned">Devolvido</option><option value="cancelled">Cancelado</option></select></label></div><div class="filter-actions"><span class="muted">Últimos ${config.historyLimit} eventos por consulta</span><div><button class="button small ghost" id="history-filter-clear" type="button">Limpar</button><button class="button primary small" id="history-filter" type="button">Aplicar filtros</button></div></div></div><div id="history"><div class="loading">Carregando histórico…</div></div></section>`);
+  wireFilterToggle("history-filter-toggle", "history-filter-panel");
+  qs("#history-filter-toggle")?.addEventListener("click", ()=>{ state.historyFiltersOpen = qs("#history-filter-panel")?.classList.contains("open"); });
+  qs("#history-filter")?.addEventListener("click", loadHistory);
+  qs("#history-filter-clear")?.addEventListener("click", ()=>{ ["#h-equipment", "#h-student", "#h-class", "#h-status", "#history-smart"].forEach(sel => { const el = qs(sel); if (el) el.value = ""; }); loadHistory(); });
+  let timer; qs("#history-smart")?.addEventListener("input", e=>{ clearTimeout(timer); timer=setTimeout(()=>loadHistory(e.target.value),180); });
+  await loadHistory();
 }
-async function loadHistory(){const p={p_from:null,p_to:null,p_equipment:qs("#h-equipment")?.value.trim()||null,p_label:null,p_student:qs("#h-student")?.value.trim()||null,p_professor:null,p_class_name:qs("#h-class")?.value.trim()||null,p_destination:null,p_status:qs("#h-status")?.value||null,p_equipment_id:null,p_limit:config.historyLimit};const {data,error}=await supabase.rpc("history_events",p);const h=qs("#history");if(!h)return;if(error){h.innerHTML=`<div class="empty"><strong>Erro ao carregar histórico.</strong><span>${esc(errText(error))}</span></div>`;return}if(!data?.length){h.innerHTML=`<div class="empty"><strong>Nenhum evento.</strong><span>Altere os filtros ou aguarde novas movimentações.</span></div>`;return}h.innerHTML=`<div class="data-list">${data.map(x=>`<div class="data-row"><div class="data-main"><strong>${esc(x.label||x.code)} · ${esc(x.brand)} ${esc(x.model)}</strong><span>${esc(x.class_name||"Sem turma")} · ${esc(x.destination||"Sem destino")}${x.student_name?` · ${esc(x.student_name)}`:""}</span></div><span class="status status-${esc(x.status)}">${esc(statusLabel(x.status))}</span><span class="data-date">${esc(dt(x.withdrawn_at))}</span></div>`).join("")}</div>`}
+async function loadHistory(smartQuery=""){const p={p_from:null,p_to:null,p_equipment:qs("#h-equipment")?.value.trim()||null,p_label:null,p_student:qs("#h-student")?.value.trim()||null,p_professor:null,p_class_name:qs("#h-class")?.value.trim()||null,p_destination:null,p_status:qs("#h-status")?.value||null,p_equipment_id:null,p_limit:config.historyLimit};const {data,error}=await supabase.rpc("history_events",p);const h=qs("#history");if(!h)return;if(error){h.innerHTML=`<div class="empty"><strong>Erro ao carregar histórico.</strong><span>${esc(errText(error))}</span></div>`;return}let rows=data||[];rows=smartFilter(rows, smartQuery || qs("#history-smart")?.value || "", x=>[x.label,x.code,x.brand,x.model,x.class_name,x.destination,x.student_name,x.status,statusLabel(x.status)]);if(!rows.length){h.innerHTML=`<div class="empty"><strong>Nenhum evento.</strong><span>Altere os filtros ou aguarde novas movimentações.</span></div>`;return}h.innerHTML=`<div class="data-list">${rows.map(x=>`<div class="data-row"><div class="data-main"><strong>${esc(x.label||x.code)} · ${esc(x.brand)} ${esc(x.model)}</strong><span>${esc(x.class_name||"Sem turma")} · ${esc(x.destination||"Sem destino")}${x.student_name?` · ${esc(x.student_name)}`:""}</span></div><span class="status status-${esc(x.status)}">${esc(statusLabel(x.status))}</span><span class="data-date">${esc(dt(x.withdrawn_at))}</span></div>`).join("")}</div>`}
 
 async function renderCarts() {
-  state.view="carts";const admin=state.profile.role==="admin";shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Lotes</span><h2>Carrinhos de equipamentos</h2><p>Agrupe dispositivos e opere lotes usando um único QR Code.</p></div>${admin?`<button class="button primary" id="new-cart">Novo carrinho</button>`:""}</div><div id="carts"><div class="loading">Carregando carrinhos…</div></div></section>`);qs("#new-cart")?.addEventListener("click",openCartForm);const {data,error}=await supabase.rpc("cart_scan_catalog");const h=qs("#carts");if(error){h.innerHTML=`<div class="empty"><strong>Erro ao carregar.</strong><span>${esc(errText(error))}</span></div>`;return}if(!data?.length){h.innerHTML=`<div class="empty"><strong>Nenhum carrinho cadastrado.</strong><span>O administrador pode agrupar equipamentos por códigos.</span></div>`;return}h.innerHTML=`<div class="data-list">${data.map(c=>`<button class="data-row" type="button" data-cart-token="${esc(c.qr_token)}"><div class="data-main"><strong>${esc(c.cart_name||`Carrinho ${c.cart_number}`)}</strong><span>${Number(c.item_count||0)} equipamento(s) · ${esc((c.equipment_codes||[]).slice(0,8).join(", "))}</span></div><span class="status status-available">Ativo</span><span class="data-date">#${c.cart_number}</span></button>`).join("")}</div>`;qsa("[data-cart-token]").forEach(b=>b.addEventListener("click",()=>openCart(b.dataset.cartToken)));
+  state.view="carts";
+  const admin=state.profile.role==="admin";
+  shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Lotes</span><h2>Carrinhos de equipamentos</h2><p>Agrupe dispositivos e opere lotes usando um único QR Code.</p></div>${admin?`<button class="button primary" id="new-cart">Novo carrinho</button>`:""}</div><div class="toolbar workspace-toolbar"><div class="toolbar-cluster"><input id="cart-search" class="search" type="search" value="${esc(state.cartSearch)}" placeholder="Buscar carrinho, número ou equipamento vinculado"></div></div><div id="carts"><div class="loading">Carregando carrinhos…</div></div></section>`);
+  qs("#new-cart")?.addEventListener("click",openCartForm);
+  const {data,error}=await supabase.rpc("cart_scan_catalog");
+  const h=qs("#carts");
+  if(error){h.innerHTML=`<div class="empty"><strong>Erro ao carregar.</strong><span>${esc(errText(error))}</span></div>`;return}
+  let rows = data || [];
+  rows = smartFilter(rows, state.cartSearch, c => [c.cart_name, `carrinho ${c.cart_number}`, (c.equipment_codes||[]).join(' '), `${c.item_count} equipamentos`]);
+  if(!rows.length){h.innerHTML=`<div class="empty"><strong>Nenhum carrinho cadastrado.</strong><span>O administrador pode agrupar equipamentos por códigos.</span></div>`;return}
+  h.innerHTML=`<div class="data-list">${rows.map(c=>`<button class="data-row" type="button" data-cart-token="${esc(c.qr_token)}"><div class="data-main"><strong>${esc(c.cart_name||`Carrinho ${c.cart_number}`)}</strong><span>${Number(c.item_count||0)} equipamento(s) · ${esc((c.equipment_codes||[]).slice(0,8).join(", "))}</span></div><span class="status status-available">Ativo</span><span class="data-date">#${c.cart_number}</span></button>`).join("")}</div>`;
+  let timer; qs("#cart-search")?.addEventListener("input", e=>{clearTimeout(timer);timer=setTimeout(()=>{state.cartSearch=e.target.value;renderCarts()},180)});
+  qsa("[data-cart-token]").forEach(b=>b.addEventListener("click",()=>openCart(b.dataset.cartToken)));
 }
 async function openCart(token) {const {data,error}=await supabase.rpc("cart_scan_equipment_list",{p_qr_token:token});if(error)return notify(errText(error),"error");const items=data||[];if(!items.length)return notify("Carrinho vazio ou indisponível.","warning");const available=items.filter(x=>x.is_active&&x.status==="available");const m=makeModal(`<div class="panel-head"><div><span class="eyebrow">Carrinho ${items[0].cart_number}</span><h2>${esc(items[0].cart_name||`Carrinho ${items[0].cart_number}`)}</h2></div><button class="icon-button" data-close>×</button></div><div class="modal-body">${equipmentRows(items.map(x=>({id:x.equipment_id,...x})))}<div class="modal-actions"><button class="button ghost" data-cart-qr>QR Code</button>${available.length?`<button class="button primary" data-batch>Retirar ${available.length} disponível(is)</button>`:""}</div></div>`,true);bindEquipmentRowClicks(m);qs("[data-cart-qr]",m)?.addEventListener("click",()=>openQrModal(token,items[0].cart_name||`Carrinho ${items[0].cart_number}`,`${items.length} equipamentos`));qs("[data-batch]",m)?.addEventListener("click",()=>{m.remove();openCheckoutModal(available)});}
 function openCartForm(){const m=makeModal(`<div class="panel-head"><div><span class="eyebrow">Administração</span><h2>Novo carrinho</h2></div><button class="icon-button" data-close>×</button></div><div class="modal-body"><form id="cart-form" class="auth-form"><label>Número<input name="number" type="number" min="1" required></label><label>Nome opcional<input name="name" maxlength="120"></label><label>Códigos dos equipamentos<textarea name="codes" required placeholder="001\n002\n003"></textarea></label><div class="modal-actions"><button class="button" data-close type="button">Cancelar</button><button class="button primary" type="submit">Criar carrinho</button></div></form></div>`);qs("#cart-form",m).addEventListener("submit",async e=>{e.preventDefault();const b=qs('button[type="submit"]',e.currentTarget);setBusy(b,true,"Salvando…");const f=new FormData(e.currentTarget);const codes=[...new Set(f.get("codes").split(/[\n,;]+/).map(x=>x.trim()).filter(Boolean))];const {error}=await supabase.rpc("save_equipment_cart",{p_cart_id:null,p_number:Number(f.get("number")),p_name:f.get("name").trim()||null,p_equipment_codes:codes});setBusy(b,false);if(error)return notify(errText(error),"error");notify("Carrinho criado.","success");m.remove();renderCarts()})}
 
-async function renderMaintenance(){if(state.profile.role!=="admin")return navigate("dashboard");state.view="maintenance";shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Oficina</span><h2>Histórico de manutenção</h2><p>Ocorrências técnicas e intervenções ficam organizadas em uma única linha do tempo.</p></div></div><div id="maintenance"><div class="loading">Carregando…</div></div></section>`);const {data,error}=await supabase.from("maintenance_events").select("id,equipment_id,title,notes,resolution,status,opened_at,closed_at,equipments(code,label,brand,model)").order("opened_at",{ascending:false}).limit(300);const h=qs("#maintenance");if(error){h.innerHTML=`<div class="empty"><strong>Erro.</strong><span>${esc(errText(error))}</span></div>`;return}if(!data?.length){h.innerHTML=`<div class="empty"><strong>Nenhuma manutenção registrada.</strong><span>Abra um equipamento e escolha Manutenção.</span></div>`;return}h.innerHTML=`<div class="data-list">${data.map(x=>`<div class="data-row"><div class="data-main"><strong>${esc(x.equipments?.label||x.equipments?.code)} · ${esc(x.title)}</strong><span>${esc(x.equipments?.brand||"")} ${esc(x.equipments?.model||"")} · aberta ${esc(dt(x.opened_at))}</span></div><span class="status status-${esc(x.status)}">${esc(statusLabel(x.status))}</span><div class="row-actions">${x.status==="open"?`<button class="button primary small" data-resolve="${x.id}">Concluir</button>`:""}</div></div>`).join("")}</div>`;qsa("[data-resolve]").forEach(b=>b.addEventListener("click",()=>resolveMaintenance(Number(b.dataset.resolve))));}
+async function renderMaintenance(){if(state.profile.role!=="admin")return navigate("dashboard");state.view="maintenance";const filterCount=activeFilterCount([state.maintenanceStatus]);shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Oficina</span><h2>Histórico de manutenção</h2><p>Ocorrências técnicas e intervenções ficam organizadas em uma única linha do tempo.</p></div></div><div class="toolbar workspace-toolbar"><div class="toolbar-cluster"><input id="maintenance-search" class="search" type="search" value="${esc(state.maintenanceSearch)}" placeholder="Buscar equipamento, título ou observação"><button class="filter-button ${filterCount ? 'has-active active' : ''}" id="maintenance-filter-toggle" type="button" aria-expanded="${filterCount ? 'true' : 'false'}">${icon("filter")}<span>Filtros</span>${filterBadge(filterCount)}</button></div></div><div class="filter-drawer ${filterCount ? 'open' : ''}" id="maintenance-filter-panel"><div class="filter-grid"><label>Status<select id="maintenance-status"><option value="">Todos</option><option value="open" ${state.maintenanceStatus==='open'?'selected':''}>Aberta</option><option value="resolved" ${state.maintenanceStatus==='resolved'?'selected':''}>Resolvida</option></select></label></div><div class="filter-actions"><button class="button small ghost" id="maintenance-filter-clear" type="button">Limpar filtros</button><button class="button primary small" id="maintenance-filter-apply" type="button">Aplicar</button></div></div><div id="maintenance"><div class="loading">Carregando…</div></div></section>`);const {data,error}=await supabase.from("maintenance_events").select("id,equipment_id,title,notes,resolution,status,opened_at,closed_at,equipments(code,label,brand,model)").order("opened_at",{ascending:false}).limit(300);const h=qs("#maintenance");if(error){h.innerHTML=`<div class="empty"><strong>Erro.</strong><span>${esc(errText(error))}</span></div>`;return}let rows=data||[];rows=smartFilter(rows,state.maintenanceSearch,x=>[x.title,x.notes,x.resolution,x.equipments?.label,x.equipments?.code,x.equipments?.brand,x.equipments?.model,statusLabel(x.status)]);if(state.maintenanceStatus)rows=rows.filter(x=>x.status===state.maintenanceStatus);if(!rows.length){h.innerHTML=`<div class="empty"><strong>Nenhuma manutenção registrada.</strong><span>Abra um equipamento e escolha Manutenção.</span></div>`;}else{h.innerHTML=`<div class="data-list">${rows.map(x=>`<div class="data-row"><div class="data-main"><strong>${esc(x.equipments?.label||x.equipments?.code)} · ${esc(x.title)}</strong><span>${esc(x.equipments?.brand||"")} ${esc(x.equipments?.model||"")} · aberta ${esc(dt(x.opened_at))}</span></div><span class="status status-${esc(x.status)}">${esc(statusLabel(x.status))}</span><div class="row-actions">${x.status==="open"?`<button class="button primary small" data-resolve="${x.id}">Concluir</button>`:""}</div></div>`).join("")}</div>`;qsa("[data-resolve]").forEach(b=>b.addEventListener("click",()=>resolveMaintenance(Number(b.dataset.resolve))));}let timer;qs("#maintenance-search")?.addEventListener("input",e=>{clearTimeout(timer);timer=setTimeout(()=>{state.maintenanceSearch=e.target.value;renderMaintenance()},180)});wireFilterToggle("maintenance-filter-toggle", "maintenance-filter-panel");qs("#maintenance-filter-apply")?.addEventListener("click",()=>{state.maintenanceStatus=qs("#maintenance-status")?.value||"";renderMaintenance()});qs("#maintenance-filter-clear")?.addEventListener("click",()=>{state.maintenanceStatus="";renderMaintenance()});}
 function resolveMaintenance(id){const m=makeModal(`<div class="panel-head"><div><span class="eyebrow">Manutenção</span><h2>Concluir manutenção</h2></div><button class="icon-button" data-close>×</button></div><div class="modal-body"><form id="resolve-form" class="auth-form"><label>Resolução<textarea name="resolution" maxlength="1200" placeholder="O que foi feito"></textarea></label><div class="modal-actions"><button class="button" data-close type="button">Cancelar</button><button class="button primary" type="submit">Concluir</button></div></form></div>`);qs("#resolve-form",m).addEventListener("submit",async e=>{e.preventDefault();const b=qs('button[type="submit"]',e.currentTarget);setBusy(b,true,"Concluindo…");const f=new FormData(e.currentTarget);const {error}=await supabase.rpc("resolve_maintenance",{p_event_id:id,p_resolution:f.get("resolution").trim()||null});setBusy(b,false);if(error)return notify(errText(error),"error");notify("Manutenção concluída.","success");m.remove();renderMaintenance()})}
 
 async function renderAdmin(){if(state.profile.role!=="admin")return navigate("dashboard");state.view="admin";shell(`<section class="admin-workspace"><div class="admin-titlebar"><div><span class="eyebrow">Administração</span><h2>Central administrativa</h2><p>Usuários, capacidade e ferramentas em uma única superfície de trabalho.</p></div></div><div class="split admin-grid"><section class="panel admin-users"><div class="panel-head"><div><span class="eyebrow">Pessoas</span><h2>Usuários e cargos</h2></div></div><div id="users"><div class="loading">Carregando usuários…</div></div></section><div class="stack admin-side"><section class="panel"><div class="panel-head"><div><span class="eyebrow">500 MB</span><h2>Capacidade do banco</h2></div></div><div id="capacity"><div class="loading">Medindo…</div></div></section><section class="panel"><div class="panel-head"><div><span class="eyebrow">Ferramentas</span><h2>Inventário</h2></div></div><div class="panel-pad quick-grid"><div class="quick-card"><strong>Importar</strong><span>CSV/XLSX é validado no navegador e não fica armazenado.</span><button class="button small" id="admin-import">Importar arquivo</button></div><div class="quick-card"><strong>Exportar</strong><span>Gera XLSX direto no navegador.</span><button class="button small" id="admin-export">Exportar XLSX</button></div><div class="quick-card"><strong>QRs em lote</strong><span>Folha pronta para impressão dos equipamentos ativos.</span><button class="button small" id="admin-qrs">Gerar QRs</button></div></div></section></div></div></section>`);qs("#admin-import").addEventListener("click",openImportModal);qs("#admin-export").addEventListener("click",exportEquipments);qs("#admin-qrs").addEventListener("click",printQrBatch);await Promise.all([loadAdminUsers(),loadCapacity()]);}

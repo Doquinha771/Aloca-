@@ -14,6 +14,6 @@ As migrations da pasta `supabase/migrations` já foram aplicadas ao projeto usad
 
 ## Versão
 
-0.0.7 — Connected Workspace
+0.0.8 — Blue Sidebar + Smart Search
 
 A interface foi reorganizada para eliminar cards isolados. Dashboard Bento, inventário, retiradas, reservas, histórico, carrinhos, manutenção e administração passam a usar superfícies conectadas, divisórias internas e uma hierarquia visual única. O backend e a estrutura do Supabase permanecem inalterados.
