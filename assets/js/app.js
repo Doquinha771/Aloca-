@@ -23,6 +23,24 @@ const qs = (s, root = document) => root.querySelector(s);
 const qsa = (s, root = document) => [...root.querySelectorAll(s)];
 const esc = (v = "") => String(v).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 const uid = () => crypto.randomUUID();
+const loadedScripts = new Map();
+function loadScriptOnce(src, globalName) {
+  if (globalName && window[globalName]) return Promise.resolve(window[globalName]);
+  if (loadedScripts.has(src)) return loadedScripts.get(src);
+  const promise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = src;
+    script.async = true;
+    script.onload = () => resolve(globalName ? window[globalName] : true);
+    script.onerror = () => { loadedScripts.delete(src); reject(new Error("Não foi possível carregar um recurso necessário.")); };
+    document.head.append(script);
+  });
+  loadedScripts.set(src, promise);
+  return promise;
+}
+const ensureQRCodeLib = () => loadScriptOnce("https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js", "QRCode");
+const ensureXLSXLib = () => loadScriptOnce("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js", "XLSX");
+const ensureJsQRLib = () => loadScriptOnce("https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js", "jsQR");
 
 function dt(value) {
   if (!value) return "—";
@@ -233,15 +251,14 @@ function icon(name) {
 }
 function shell(content) {
   const admin = state.profile?.role === "admin";
-  const mobileMoreItems = `${nav("history","Histórico","history")}${nav("carts","Carrinhos","carts")}${admin ? nav("maintenance","Manutenção","maintenance") + nav("admin","Administração","admin") : ""}`;
+  const mobileMoreItems = `${nav("reservations","Reservas","reservations")}${nav("history","Histórico","history")}${nav("carts","Carrinhos","carts")}${admin ? nav("maintenance","Manutenção","maintenance") + nav("admin","Administração","admin") : ""}`;
   app.innerHTML = `<div class="app-shell">
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-brand" title="Dasein"><div class="brandmark small">D</div><div class="brand-copy"><strong>Dasein</strong><span>Gestão escolar</span></div></div>
-      <div class="sidebar-context"><span>Ambiente</span><strong>${esc(roleLabel(state.profile?.role))}</strong></div>
       <nav class="nav" aria-label="Navegação principal">
         ${nav("dashboard","Início","dashboard")}${nav("equipment","Equipamentos","equipment")}${nav("withdrawals","Retiradas","withdrawals")}${nav("reservations","Reservas","reservations")}${nav("history","Histórico","history")}${nav("carts","Carrinhos","carts")}${admin ? nav("maintenance","Manutenção","maintenance") + nav("admin","Administração","admin") : ""}
       </nav>
-      <div class="sidebar-user"><div class="sidebar-user-copy"><strong>${esc(state.profile?.full_name)}</strong><span>${esc(roleLabel(state.profile?.role))}</span></div><button class="nav-icon logout-button" id="logout" title="Sair" aria-label="Sair">${icon("logout")}</button></div>
+      <div class="sidebar-user sidebar-user-simple"><button class="nav-icon logout-button" id="logout" title="Sair" aria-label="Sair">${icon("logout")}</button></div>
     </aside>
     <section class="main">
       <header class="topbar">
@@ -252,7 +269,7 @@ function shell(content) {
       <main class="content view-${esc(state.view)}">${content}</main>
     </section>
     <nav class="mobile-tabbar" aria-label="Navegação do aplicativo">
-      ${mobileNav("dashboard","Início","dashboard")}${mobileNav("equipment","Equipamentos","equipment")}${mobileNav("withdrawals","Retiradas","withdrawals")}${mobileNav("reservations","Reservas","reservations")}<button class="mobile-nav-item" id="mobile-more" type="button"><span>${icon("admin")}</span><small>Mais</small></button>
+      ${mobileNav("dashboard","Início","dashboard")}${mobileNav("equipment","Equipamentos","equipment")}<button class="mobile-nav-item mobile-qr-action" id="mobile-qr-scan" type="button" aria-label="Ler QR Code"><span>${icon("qr")}</span><small>Ler QR</small></button>${mobileNav("withdrawals","Retiradas","withdrawals")}<button class="mobile-nav-item" id="mobile-more" type="button"><span>${icon("admin")}</span><small>Mais</small></button>
     </nav>
     <div class="mobile-more-backdrop" id="mobile-more-backdrop"><section class="mobile-more-sheet"><div class="mobile-sheet-handle"></div><div class="mobile-sheet-head"><div><span>Mais opções</span><strong>Dasein</strong></div><button class="icon-button" id="mobile-more-close" type="button">×</button></div><div class="mobile-more-list">${mobileMoreItems}</div><button class="mobile-sheet-logout" id="mobile-sheet-logout" type="button">${icon("logout")}<span>Sair da conta</span></button></section></div>
   </div>`;
@@ -260,6 +277,7 @@ function shell(content) {
   qs("#menu")?.addEventListener("click", () => qs("#sidebar")?.classList.toggle("open"));
   qs("#logout")?.addEventListener("click", () => supabase.auth.signOut());
   qs("#mobile-sheet-logout")?.addEventListener("click", () => supabase.auth.signOut());
+  qs("#mobile-qr-scan")?.addEventListener("click", openMobileQrScanner);
   qs("#account-chip")?.addEventListener("click", () => navigate(admin ? "admin" : "dashboard"));
   const closeMobileMore = () => qs("#mobile-more-backdrop")?.classList.remove("open");
   qs("#mobile-more")?.addEventListener("click", () => qs("#mobile-more-backdrop")?.classList.add("open"));
@@ -310,10 +328,7 @@ async function renderDashboard() {
   const today = new Intl.DateTimeFormat("pt-BR", { weekday:"long", day:"2-digit", month:"long" }).format(new Date());
 
   shell(`<section class="future-home">
-    <header class="future-welcome">
-      <div><span class="future-breadcrumb">Início</span><h1>Olá, ${esc(firstName())}</h1><p>${esc(roleLabel(state.profile.role))} · ${esc(today)}</p></div>
-      <button class="future-profile-button" type="button" data-open="${admin?"admin":"equipment"}"><span>${icon("user")}</span><div><strong>${esc(state.profile.full_name)}</strong><small>Acessar perfil</small></div></button>
-    </header>
+    <header class="future-welcome"><div><span class="future-breadcrumb">Início</span><h1>Olá, ${esc(firstName())}</h1><p>${esc(roleLabel(state.profile.role))} · ${esc(today)}</p></div></header>
 
     <section class="future-status-row" aria-label="Resumo da operação">
       <button class="future-status-card status-blue" data-go="equipment" type="button"><span class="future-status-icon">${icon("equipment")}</span><div><strong>${Number(available).toLocaleString("pt-BR")}</strong><span>Disponíveis</span></div><small>${availablePct}% do inventário</small></button>
@@ -496,7 +511,8 @@ function openMaintenanceModal(e) {
   const m=makeModal(`<div class="panel-head"><div><span class="eyebrow">Manutenção</span><h2>${esc(e.label||e.code)}</h2></div><button class="icon-button" data-close>×</button></div><div class="modal-body"><form id="maintenance-form" class="auth-form"><label>Motivo<input name="title" required maxlength="160" placeholder="Ex.: teclado com falha"></label><label>Observações<textarea name="notes" maxlength="1200"></textarea></label><div class="modal-actions"><button class="button" data-close type="button">Cancelar</button><button class="button primary" type="submit">Abrir manutenção</button></div></form></div>`);
   qs("#maintenance-form",m).addEventListener("submit",async ev=>{ev.preventDefault();const b=qs('button[type="submit"]',ev.currentTarget);setBusy(b,true,"Abrindo…");const f=new FormData(ev.currentTarget);const {error}=await supabase.rpc("open_maintenance",{p_equipment_id:e.id,p_title:f.get("title").trim(),p_notes:f.get("notes").trim()||null,p_client_action_id:uid()});setBusy(b,false);if(error)return notify(errText(error),"error");notify("Equipamento enviado para manutenção.","success");m.remove();navigate("maintenance")});
 }
-function openQrModal(token,title,subtitle="") {
+async function openQrModal(token,title,subtitle="") {
+  try { await ensureQRCodeLib(); } catch (error) { return notify(error.message,"error"); }
   const m=makeModal(`<div class="printable"><div class="panel-head"><div><span class="eyebrow">QR permanente</span><h2>${esc(title)}</h2></div><button class="icon-button" data-close>×</button></div><div class="qr-card"><div id="qr-code"></div><strong>${esc(title)}</strong><small>${esc(subtitle)}</small><span>${esc(qrUrl(token))}</span><div class="modal-actions"><button class="button ghost" id="copy-qr">Copiar link</button><button class="button primary" id="print-qr">Imprimir</button></div></div></div>`);
   new window.QRCode(qs("#qr-code",m),{text:qrUrl(token),width:210,height:210,correctLevel:window.QRCode.CorrectLevel.M});
   qs("#copy-qr",m).addEventListener("click",async()=>{await navigator.clipboard.writeText(qrUrl(token));notify("Link copiado.","success")});qs("#print-qr",m).addEventListener("click",()=>window.print());
@@ -587,12 +603,92 @@ async function loadCapacity(){const {data,error}=await supabase.rpc("admin_capac
 function normalizeHeader(v){return String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toLowerCase().replace(/\s+/g,"_")}
 function fieldFromRow(row, names){for(const n of names){const key=Object.keys(row).find(k=>normalizeHeader(k)===n);if(key!==undefined&&String(row[key]??"").trim()!=="")return String(row[key]).trim()}return ""}
 function mapImportRows(raw){const seen=new Set();return raw.map((r,i)=>{const code=fieldFromRow(r,["numero","codigo","code","n","id"]);const asset=fieldFromRow(r,["patrimonio","asset_tag","asset"]);const model=fieldFromRow(r,["modelo","model"]);const label=fieldFromRow(r,["nome","label","rotulo"]);const brand=fieldFromRow(r,["marca","brand","fabricante"])||"Não informado";let status=normalizeHeader(fieldFromRow(r,["estado","status"])||"available");status=({disponivel:"available",em_uso:"in_use",manutencao:"maintenance",indisponivel:"unavailable"})[status]||status;if(!["available","in_use","maintenance","unavailable"].includes(status))status="available";const errors=[];if(!code)errors.push("Número/código obrigatório");if(!model)errors.push("Modelo obrigatório");if(code&&seen.has(code.toLowerCase()))errors.push("Código duplicado no arquivo");if(code)seen.add(code.toLowerCase());return{line:i+2,code,asset_tag:asset||null,brand,model,label:label||null,status,is_active:true,errors}})}
-function openImportModal(){const m=makeModal(`<div class="panel-head"><div><span class="eyebrow">Importação</span><h2>CSV ou Excel</h2></div><button class="icon-button" data-close>×</button></div><div class="modal-body"><p class="muted">Colunas reconhecidas: Número/Código, Patrimônio, Modelo, Nome, Marca e Estado. O arquivo é processado somente no navegador.</p><input id="import-file" type="file" accept=".csv,.xlsx,.xls"><div id="import-preview" style="margin-top:14px"></div></div>`,true);qs("#import-file",m).addEventListener("change",async e=>{const file=e.target.files?.[0];if(!file)return;if(file.size>config.importMaxBytes)return notify("Arquivo maior que 5 MB.","error");try{const buf=await file.arrayBuffer();const wb=window.XLSX.read(buf,{type:"array"});const raw=window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});const rows=mapImportRows(raw);showImportPreview(m,rows)}catch(error){notify(`Não foi possível ler o arquivo: ${error.message}`,"error")}})}
+function openImportModal(){const m=makeModal(`<div class="panel-head"><div><span class="eyebrow">Importação</span><h2>CSV ou Excel</h2></div><button class="icon-button" data-close>×</button></div><div class="modal-body"><p class="muted">Colunas reconhecidas: Número/Código, Patrimônio, Modelo, Nome, Marca e Estado. O arquivo é processado somente no navegador.</p><input id="import-file" type="file" accept=".csv,.xlsx,.xls"><div id="import-preview" style="margin-top:14px"></div></div>`,true);qs("#import-file",m).addEventListener("change",async e=>{const file=e.target.files?.[0];if(!file)return;if(file.size>config.importMaxBytes)return notify("Arquivo maior que 5 MB.","error");try{await ensureXLSXLib();const buf=await file.arrayBuffer();const wb=window.XLSX.read(buf,{type:"array"});const raw=window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});const rows=mapImportRows(raw);showImportPreview(m,rows)}catch(error){notify(`Não foi possível ler o arquivo: ${error.message}`,"error")}})}
 function showImportPreview(modal,rows){const valid=rows.filter(r=>!r.errors.length);const host=qs("#import-preview",modal);host.innerHTML=`<div class="import-preview"><table class="preview-table"><thead><tr><th>Linha</th><th>Código</th><th>Modelo</th><th>Nome</th><th>Estado</th><th>Validação</th></tr></thead><tbody>${rows.slice(0,200).map(r=>`<tr><td>${r.line}</td><td>${esc(r.code||"—")}</td><td>${esc(r.model||"—")}</td><td>${esc(r.label||"—")}</td><td>${esc(statusLabel(r.status))}</td><td class="${r.errors.length?"preview-error":""}">${esc(r.errors.join("; ")||"OK")}</td></tr>`).join("")}</tbody></table></div><div class="modal-actions"><span class="muted">${valid.length} válido(s) de ${rows.length}</span><button class="button primary" id="confirm-import" ${valid.length?"":"disabled"}>Importar válidos</button></div>`;qs("#confirm-import",modal)?.addEventListener("click",()=>performImport(modal,valid));}
 async function performImport(modal,rows){const b=qs("#confirm-import",modal);setBusy(b,true,"Importando…");let inserted=0,skipped=0;try{for(let i=0;i<rows.length;i+=100){const chunk=rows.slice(i,i+100);const codes=chunk.map(r=>r.code);const {data:existing,error:e1}=await supabase.from("equipments").select("code").in("code",codes);if(e1)throw e1;const set=new Set((existing||[]).map(x=>x.code.toLowerCase()));const payload=chunk.filter(r=>!set.has(r.code.toLowerCase())).map(({line,errors,...r})=>({...r,created_by:state.profile.id}));skipped+=chunk.length-payload.length;if(payload.length){const {error}=await supabase.from("equipments").insert(payload);if(error)throw error;inserted+=payload.length}}notify(`${inserted} equipamento(s) importado(s)${skipped?` · ${skipped} duplicado(s) ignorado(s)`:""}.`,"success");modal.remove();renderEquipment()}catch(error){notify(errText(error),"error")}finally{setBusy(b,false)}}
 async function fetchAllEquipments(limit=10000){const all=[];for(let from=0;from<limit;from+=500){const {data,error}=await supabase.from("equipments").select("code,asset_tag,brand,model,label,status,is_active,qr_token,created_at,updated_at").order("code").range(from,from+499);if(error)throw error;all.push(...(data||[]));if((data||[]).length<500)break}return all}
-async function exportEquipments(){try{const rows=await fetchAllEquipments();const sheet=window.XLSX.utils.json_to_sheet(rows.map(x=>({Numero:x.code,Patrimonio:x.asset_tag||"",Marca:x.brand,Modelo:x.model,Nome:x.label||"",Estado:statusLabel(x.status),Ativo:x.is_active?"Sim":"Não",QR:x.qr_token,Criado:x.created_at,Atualizado:x.updated_at})));const wb=window.XLSX.utils.book_new();window.XLSX.utils.book_append_sheet(wb,sheet,"Equipamentos");window.XLSX.writeFile(wb,`Dasein-equipamentos-${new Date().toISOString().slice(0,10)}.xlsx`)}catch(error){notify(errText(error),"error")}}
-async function printQrBatch(){try{const {data,error}=await supabase.from("equipments").select("code,label,brand,model,qr_token").eq("is_active",true).order("code").limit(200);if(error)throw error;const m=makeModal(`<div class="printable"><div class="panel-head"><div><span class="eyebrow">Impressão</span><h2>QR Codes · ${data.length} equipamento(s)</h2></div><button class="icon-button" data-close>×</button></div><div class="modal-body"><div id="qr-batch" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px"></div><div class="modal-actions"><button class="button primary" id="print-batch">Imprimir</button></div></div></div>`,true);const h=qs("#qr-batch",m);data.forEach((e,i)=>{const card=document.createElement("div");card.style.cssText="border:1px solid #ddd;border-radius:10px;padding:12px;text-align:center;break-inside:avoid";card.innerHTML=`<div id="qrb-${i}" style="display:grid;place-items:center"></div><strong style="display:block;margin-top:8px">${esc(e.label||e.code)}</strong><small>${esc(e.code)} · ${esc(e.model)}</small>`;h.append(card);new window.QRCode(qs(`#qrb-${i}`,card),{text:qrUrl(e.qr_token),width:112,height:112,correctLevel:window.QRCode.CorrectLevel.M})});qs("#print-batch",m).addEventListener("click",()=>window.print());if(data.length===200)notify("A impressão em lote foi limitada aos primeiros 200 equipamentos para proteger o navegador.","warning")}catch(error){notify(errText(error),"error")}}
+async function exportEquipments(){try{await ensureXLSXLib();const rows=await fetchAllEquipments();const sheet=window.XLSX.utils.json_to_sheet(rows.map(x=>({Numero:x.code,Patrimonio:x.asset_tag||"",Marca:x.brand,Modelo:x.model,Nome:x.label||"",Estado:statusLabel(x.status),Ativo:x.is_active?"Sim":"Não",QR:x.qr_token,Criado:x.created_at,Atualizado:x.updated_at})));const wb=window.XLSX.utils.book_new();window.XLSX.utils.book_append_sheet(wb,sheet,"Equipamentos");window.XLSX.writeFile(wb,`Dasein-equipamentos-${new Date().toISOString().slice(0,10)}.xlsx`)}catch(error){notify(errText(error),"error")}}
+async function printQrBatch(){try{await ensureQRCodeLib();const {data,error}=await supabase.from("equipments").select("code,label,brand,model,qr_token").eq("is_active",true).order("code").limit(200);if(error)throw error;const m=makeModal(`<div class="printable"><div class="panel-head"><div><span class="eyebrow">Impressão</span><h2>QR Codes · ${data.length} equipamento(s)</h2></div><button class="icon-button" data-close>×</button></div><div class="modal-body"><div id="qr-batch" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px"></div><div class="modal-actions"><button class="button primary" id="print-batch">Imprimir</button></div></div></div>`,true);const h=qs("#qr-batch",m);data.forEach((e,i)=>{const card=document.createElement("div");card.style.cssText="border:1px solid #ddd;border-radius:10px;padding:12px;text-align:center;break-inside:avoid";card.innerHTML=`<div id="qrb-${i}" style="display:grid;place-items:center"></div><strong style="display:block;margin-top:8px">${esc(e.label||e.code)}</strong><small>${esc(e.code)} · ${esc(e.model)}</small>`;h.append(card);new window.QRCode(qs(`#qrb-${i}`,card),{text:qrUrl(e.qr_token),width:112,height:112,correctLevel:window.QRCode.CorrectLevel.M})});qs("#print-batch",m).addEventListener("click",()=>window.print());if(data.length===200)notify("A impressão em lote foi limitada aos primeiros 200 equipamentos para proteger o navegador.","warning")}catch(error){notify(errText(error),"error")}}
+
+function parseQrToken(raw = "") {
+  const value = String(raw || "").trim();
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (uuidPattern.test(value)) return value;
+  try {
+    const url = new URL(value);
+    const token = url.searchParams.get("qr") || url.searchParams.get("e");
+    return uuidPattern.test(token || "") ? token : null;
+  } catch { return null; }
+}
+async function openScannedToken(token) {
+  const scan = await scanPublic(token);
+  if (!scan) return notify("QR inválido, inativo ou não reconhecido pelo Dasein.", "error");
+  if (scan.kind === "cart") {
+    state.view = "carts";
+    await renderCarts();
+    return openCart(token);
+  }
+  const { data, error } = await supabase.from("equipments").select("id").eq("qr_token", token).maybeSingle();
+  if (error || !data) return notify("Equipamento não encontrado.", "error");
+  state.view = "equipment";
+  await renderEquipment();
+  return openEquipment(data.id);
+}
+async function openMobileQrScanner() {
+  let jsQR;
+  try { jsQR = await ensureJsQRLib(); }
+  catch (error) { return notify(error.message, "error"); }
+  if (!navigator.mediaDevices?.getUserMedia) return notify("Este navegador não oferece acesso à câmera para leitura de QR.", "error");
+  const back = document.createElement("div");
+  back.className = "modal-backdrop scanner-backdrop";
+  back.innerHTML = `<section class="mobile-scanner" role="dialog" aria-modal="true"><header class="scanner-head"><div><span class="eyebrow">Leitor Dasein</span><h2>Aponte para o QR Code</h2></div><button class="scanner-close" type="button" aria-label="Fechar">×</button></header><div class="scanner-stage"><video class="scanner-video" autoplay muted playsinline></video><canvas class="scanner-canvas" aria-hidden="true"></canvas><div class="scanner-frame"><i></i><i></i><i></i><i></i></div><div class="scanner-line"></div></div><p class="scanner-help">Mantenha o código dentro da área marcada. A leitura acontece automaticamente.</p></section>`;
+  document.body.append(back);
+  const video = qs(".scanner-video", back);
+  const canvas = qs(".scanner-canvas", back);
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  let stream = null;
+  let raf = 0;
+  let stopped = false;
+  let lastScan = 0;
+  const cleanup = () => {
+    if (stopped) return;
+    stopped = true;
+    cancelAnimationFrame(raf);
+    stream?.getTracks().forEach(track => track.stop());
+    back.remove();
+  };
+  qs(".scanner-close", back)?.addEventListener("click", cleanup);
+  back.addEventListener("click", e => { if (e.target === back) cleanup(); });
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    video.srcObject = stream;
+    await video.play();
+  } catch (error) {
+    cleanup();
+    return notify("Não foi possível acessar a câmera. Verifique a permissão do navegador.", "error");
+  }
+  const tick = async now => {
+    if (stopped) return;
+    raf = requestAnimationFrame(tick);
+    if (now - lastScan < 120 || video.readyState < 2) return;
+    lastScan = now;
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw || !vh) return;
+    const maxW = 720;
+    const scale = Math.min(1, maxW / vw);
+    canvas.width = Math.max(1, Math.floor(vw * scale));
+    canvas.height = Math.max(1, Math.floor(vh * scale));
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const result = jsQR(image.data, image.width, image.height, { inversionAttempts: "dontInvert" });
+    const token = result?.data ? parseQrToken(result.data) : null;
+    if (!token) return;
+    if (navigator.vibrate) navigator.vibrate(45);
+    cleanup();
+    await openScannedToken(token);
+  };
+  raf = requestAnimationFrame(tick);
+}
 
 async function handleScanAfterLogin(){const token=scanTokenFromUrl();if(!token)return false;const scan=await scanPublic(token);if(!scan){notify("QR inválido ou inativo.","error");return false}state.pendingScan=scan;if(scan.kind==="cart"){state.view="carts";await renderCarts();await openCart(token);return true}const {data,error}=await supabase.from("equipments").select("id").eq("qr_token",token).maybeSingle();if(error||!data)return false;state.view="equipment";await renderEquipment();await openEquipment(data.id);return true}
 async function initSession(session){state.session=session;try{await loadProfile()}catch(error){notify("Sua conta existe, mas o perfil escolar ainda não foi criado.","error");await supabase.auth.signOut();return}if(!(await handleScanAfterLogin()))await renderDashboard()}

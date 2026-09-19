@@ -4,7 +4,7 @@ Plataforma web para gerenciamento, reserva, retirada, devolução e manutenção
 
 ## Versão
 
-0.0.9 — Sala do Futuro UI
+0.0.10 — Sala do Futuro UI
 
 ## Interface
 
