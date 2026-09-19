@@ -1,4 +1,5 @@
-import { supabase, config } from "./supabase.js";
+const { supabase, config } = window.EquipaSupabase || {};
+if (!supabase || !config) throw new Error("Cliente Supabase não inicializado.");
 
 const app = document.querySelector("#app");
 const state = {
@@ -263,11 +264,7 @@ function openLegal(kind) {
   legalBack.classList.add("legal-document-backdrop");
 }
 async function hasCurrentLegalAcceptance() {
-  const { data, error } = await withTimeout(
-    supabase.rpc("has_current_legal_acceptance", { p_terms_version: config.legalTermsVersion, p_privacy_version: config.privacyVersion }),
-    STARTUP_TIMEOUT_MS,
-    "aceite dos termos"
-  );
+  const { data, error } = await supabase.rpc("has_current_legal_acceptance", { p_terms_version: config.legalTermsVersion, p_privacy_version: config.privacyVersion });
   if (error) { console.warn("Legal acceptance check unavailable", error); return false; }
   return data === true;
 }
@@ -729,10 +726,8 @@ async function openCartForm(item=null){
   if(item?.qr_token && (!item.equipment_codes || !item.equipment_codes.length)){const {data}=await supabase.rpc("cart_scan_equipment_list_v2",{p_qr_token:item.qr_token});record={...item,equipment_codes:(data||[]).map(x=>x.code)}}
   const m=makeModal(`<div class="panel-head"><div><span class="eyebrow">Administração</span><h2>${record?"Editar":"Novo"} carrinho</h2></div><button class="icon-button" data-close>×</button></div><div class="modal-body"><form id="cart-form" class="form-grid"><label>Número<input name="number" type="number" min="1" required value="${esc(record?.number||"")}"></label><label>Nome<input name="name" maxlength="120" value="${esc(record?.name||"")}" placeholder="Ex.: Carrinho 1"></label><label>Localização<input name="location_text" maxlength="160" value="${esc(record?.location_text||"")}" placeholder="Ex.: Sala maker"></label><label>Capacidade<input name="capacity" type="number" min="1" max="200" value="${esc(record?.capacity||"")}" placeholder="Ex.: 36"></label><label class="span-2">Códigos dos equipamentos<textarea name="codes" required placeholder="CB-001
 CB-002
-CB-003">${esc((record?.equipment_codes||[]).join("
-"))}</textarea></label><label class="span-2">Observações<textarea name="notes" maxlength="1200" placeholder="Informações operacionais do carrinho">${esc(record?.notes||"")}</textarea></label><div class="modal-actions span-2"><button class="button" data-close type="button">Cancelar</button><button class="button primary" type="submit">Salvar carrinho</button></div></form></div>`,true);
-  qs("#cart-form",m).addEventListener("submit",async e=>{e.preventDefault();const b=qs('button[type="submit"]',e.currentTarget);setBusy(b,true,"Salvando…");const f=new FormData(e.currentTarget);const codes=[...new Set(String(f.get("codes")||"").split(/[
-,;]+/).map(x=>x.trim()).filter(Boolean))];const {error}=await supabase.rpc("save_equipment_cart_v2",{p_cart_id:record?.id?Number(record.id):null,p_number:Number(f.get("number")),p_name:f.get("name").trim()||null,p_equipment_codes:codes,p_location_text:f.get("location_text").trim()||null,p_capacity:f.get("capacity")?Number(f.get("capacity")):null,p_notes:f.get("notes").trim()||null});setBusy(b,false);if(error)return notify(errText(error),"error");notify(record?"Carrinho atualizado.":"Carrinho criado.","success");m.remove();renderCarts()})
+CB-003">${esc((record?.equipment_codes||[]).join("\n"))}</textarea></label><label class="span-2">Observações<textarea name="notes" maxlength="1200" placeholder="Informações operacionais do carrinho">${esc(record?.notes||"")}</textarea></label><div class="modal-actions span-2"><button class="button" data-close type="button">Cancelar</button><button class="button primary" type="submit">Salvar carrinho</button></div></form></div>`,true);
+  qs("#cart-form",m).addEventListener("submit",async e=>{e.preventDefault();const b=qs('button[type="submit"]',e.currentTarget);setBusy(b,true,"Salvando…");const f=new FormData(e.currentTarget);const codes=[...new Set(String(f.get("codes")||"").split(/[\n,;]+/).map(x=>x.trim()).filter(Boolean))];const {error}=await supabase.rpc("save_equipment_cart_v2",{p_cart_id:record?.id?Number(record.id):null,p_number:Number(f.get("number")),p_name:f.get("name").trim()||null,p_equipment_codes:codes,p_location_text:f.get("location_text").trim()||null,p_capacity:f.get("capacity")?Number(f.get("capacity")):null,p_notes:f.get("notes").trim()||null});setBusy(b,false);if(error)return notify(errText(error),"error");notify(record?"Carrinho atualizado.":"Carrinho criado.","success");m.remove();renderCarts()})
 }
 async function deactivateCart(record){const ok=await confirmAction({title:"Desativar carrinho?",message:`${record.name||`Carrinho ${record.number}`} deixará de aparecer para operação, mas o histórico será preservado.`,confirmText:"Desativar",danger:true});if(!ok)return;const {error}=await supabase.from("equipment_carts").update({is_active:false}).eq("id",Number(record.id));if(error)return notify(errText(error),"error");notify("Carrinho desativado.","success");renderCarts()}
 
@@ -856,6 +851,7 @@ async function handleScanAfterLogin(){const token=scanTokenFromUrl();if(!token)r
 const STARTUP_TIMEOUT_MS = 12000;
 let authInitGeneration = 0;
 let authSubscription = null;
+let bootRunning = false;
 
 function withTimeout(promise, ms = STARTUP_TIMEOUT_MS, label = "operação") {
   let timer;
@@ -865,28 +861,38 @@ function withTimeout(promise, ms = STARTUP_TIMEOUT_MS, label = "operação") {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
+function showBootLoader() {
+  app.innerHTML = `<main class="boot" aria-label="Carregando"><div class="iphone-loader"><i></i></div></main>`;
+}
+
 function renderStartupError(error) {
-  console.error(error);
-  app.innerHTML = `<main class="boot boot-error"><div class="startup-error-card"><strong>Não foi possível abrir o Equipa.</strong><span>${esc(errText(error))}</span><div class="startup-error-actions"><button class="button primary" id="startup-retry" type="button">Tentar novamente</button><button class="button ghost" id="startup-signout" type="button">Voltar ao login</button></div></div></main>`;
-  qs("#startup-retry")?.addEventListener("click", () => {
-    app.innerHTML = `<main class="boot" aria-label="Carregando"><div class="iphone-loader"><i></i></div></main>`;
-    boot().catch(renderStartupError);
-  });
+  console.error("Equipa startup:", error);
+  window.__equipaBootReady?.();
+  app.innerHTML = `<main class="boot boot-error"><div class="startup-error-card"><strong>Não foi possível abrir o Equipa.</strong><span>${esc(errText(error))}</span><div class="startup-error-actions"><button class="button primary" id="startup-retry" type="button">Tentar novamente</button><button class="button ghost" id="startup-signout" type="button">Abrir login</button></div></div></main>`;
+  qs("#startup-retry")?.addEventListener("click", () => boot());
   qs("#startup-signout")?.addEventListener("click", async () => {
     try { await withTimeout(supabase.auth.signOut(), 6000, "saída da conta"); } catch {}
-    state.session = null; state.profile = null; renderAuth(null);
+    state.session = null;
+    state.profile = null;
+    renderAuth(null);
+    window.__equipaBootReady?.();
   });
 }
 
 async function initSession(session) {
+  if (!session?.user?.id) throw new Error("Sessão inválida. Entre novamente.");
   state.session = session;
   try {
     await withTimeout(loadProfile(), STARTUP_TIMEOUT_MS, "perfil escolar");
   } catch (error) {
-    if (/perfil|row|not found|PGRST116/i.test(String(error?.message || error))) {
-      notify("Sua conta existe, mas o perfil escolar ainda não foi criado.", "error");
+    const message = String(error?.message || error || "");
+    if (/perfil|row|not found|PGRST116/i.test(message)) {
       try { await withTimeout(supabase.auth.signOut(), 6000, "saída da conta"); } catch {}
+      state.session = null;
+      state.profile = null;
       renderAuth(null);
+      notify("Sua conta existe, mas o perfil escolar ainda não foi criado.", "error");
+      window.__equipaBootReady?.();
       return;
     }
     throw error;
@@ -896,48 +902,82 @@ async function initSession(session) {
     supabase.rpc("equipa_access_allowed"), STARTUP_TIMEOUT_MS, "permissões da conta"
   );
   if (accessError) throw accessError;
-  if (allowed !== true) { renderPendingApproval(); return; }
+  if (allowed !== true) {
+    renderPendingApproval();
+    window.__equipaBootReady?.();
+    return;
+  }
 
-  window.__equipaBootReady?.();
-  const legalAccepted = await ensureLegalAcceptance();
-  if (!legalAccepted) return;
+  // Não aplicamos timeout enquanto o usuário está lendo/aceitando os documentos.
+  if (!(await ensureLegalAcceptance())) {
+    window.__equipaBootReady?.();
+    return;
+  }
 
   const handledScan = await withTimeout(handleScanAfterLogin(), STARTUP_TIMEOUT_MS, "QR Code inicial");
   if (!handledScan) await withTimeout(renderDashboard(), STARTUP_TIMEOUT_MS, "visão geral");
+  window.__equipaBootReady?.();
 }
 
 function scheduleSessionInit(sessionNow) {
   const generation = ++authInitGeneration;
-  // Nunca chama a Data API dentro do callback de onAuthStateChange.
-  // Supabase documenta que isso pode causar deadlock no cliente JS.
   setTimeout(() => {
     if (generation !== authInitGeneration) return;
+    showBootLoader();
     initSession(sessionNow).catch(renderStartupError);
   }, 0);
 }
 
-async function boot() {
-  installGlobalContextMenus();
-  const { data, error } = await withTimeout(supabase.auth.getSession(), STARTUP_TIMEOUT_MS, "sessão");
-  if (error) throw error;
-  const session = data?.session || null;
-  if (session) await initSession(session);
-  else renderAuth(null);
-
+function installAuthListener() {
   authSubscription?.unsubscribe?.();
-  const { data: authListener } = supabase.auth.onAuthStateChange((event, sessionNow) => {
+  const result = supabase.auth.onAuthStateChange((event, sessionNow) => {
+    if (event === "TOKEN_REFRESHED" && sessionNow) {
+      state.session = sessionNow;
+      return;
+    }
     if (event === "SIGNED_OUT" || !sessionNow) {
       authInitGeneration++;
       state.session = null;
       state.profile = null;
       renderAuth(null);
+      window.__equipaBootReady?.();
       return;
     }
-    if (event === "SIGNED_IN" && (!state.session || state.session.user.id !== sessionNow.user.id)) {
+    if (event === "SIGNED_IN" && (!state.session || state.session.user?.id !== sessionNow.user?.id)) {
       scheduleSessionInit(sessionNow);
     }
   });
-  authSubscription = authListener?.subscription || null;
+  authSubscription = result?.data?.subscription || result?.subscription || null;
 }
 
-boot().catch(renderStartupError);
+async function boot() {
+  if (bootRunning) return;
+  bootRunning = true;
+  try {
+    installGlobalContextMenus();
+
+    // O login nasce localmente; a rede nunca é requisito para sair do loading inicial.
+    renderAuth(null);
+    window.__equipaBootReady?.();
+    installAuthListener();
+
+    const { data, error } = await withTimeout(supabase.auth.getSession(), 8000, "sessão");
+    if (error) {
+      console.warn("Não foi possível restaurar a sessão; mantendo tela de login.", error);
+      notify("Não foi possível restaurar a sessão anterior. Entre novamente.", "warning");
+      return;
+    }
+
+    const session = data?.session || null;
+    if (!session) return;
+
+    showBootLoader();
+    await initSession(session);
+  } catch (error) {
+    renderStartupError(error);
+  } finally {
+    bootRunning = false;
+  }
+}
+
+boot();

@@ -4,7 +4,7 @@
 
 **Gestão responsável de equipamentos escolares.**
 
-![Versão](https://img.shields.io/badge/vers%C3%A3o-0.0.13-5d666d?style=for-the-badge)
+![Versão](https://img.shields.io/badge/vers%C3%A3o-0.0.13%20Hotfix%203-5d666d?style=for-the-badge)
 ![Plataforma](https://img.shields.io/badge/plataforma-web-69737a?style=for-the-badge)
 ![Estado](https://img.shields.io/badge/estado-piloto%20escolar-78838a?style=for-the-badge)
 ![Privacidade](https://img.shields.io/badge/privacidade-LGPD-626d74?style=for-the-badge)
@@ -89,15 +89,11 @@ Contas novas podem permanecer aguardando aprovação antes de receber acesso ao 
 
 A área de auditoria permite acompanhar eventos relevantes, como alterações no inventário, movimentações, reservas, manutenção, carrinhos, contas e aceites legais. O histórico administrativo é preservado para evitar que a exclusão de um cadastro elimine a rastreabilidade de ações anteriores.
 
-## Hotfix
-
-0.0.13 Hotfix 1: correção do carregamento/autenticação sem alteração de recursos ou banco de dados.
-
 ## Estado do projeto
 
 ```text
 Nome        Equipa
-Versão      0.0.13
+Versão      0.0.13 · Hotfix 3
 Plataforma  Web responsiva
 Uso         Gestão de equipamentos escolares
 Estado      Piloto / desenvolvimento

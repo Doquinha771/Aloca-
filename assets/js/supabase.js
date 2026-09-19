@@ -1,3 +1,5 @@
+(function () {
+"use strict";
 /*
  * Equipa Supabase browser client (local, dependency-free)
  * Implements only the Supabase surfaces used by Equipa:
@@ -5,7 +7,7 @@
  * No service/secret key is present here. The browser uses only the publishable key.
  */
 
-export const config = window.EQUIPA_CONFIG;
+const config = window.EQUIPA_CONFIG;
 
 if (!config?.supabaseUrl || !config?.supabasePublishableKey) {
   throw new Error("Configuração do Supabase ausente.");
@@ -21,6 +23,27 @@ const STORAGE_KEY = `sb-${PROJECT_REF}-auth-token`;
 const listeners = new Set();
 let memorySession = null;
 let refreshTimer = null;
+const NETWORK_TIMEOUT_MS = 12000;
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = NETWORK_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const externalSignal = options.signal;
+  let externalAbort;
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort(externalSignal.reason);
+    else {
+      externalAbort = () => controller.abort(externalSignal.reason);
+      externalSignal.addEventListener("abort", externalAbort, { once: true });
+    }
+  }
+  const timer = setTimeout(() => controller.abort(new DOMException("Tempo limite de rede excedido.", "TimeoutError")), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+    if (externalSignal && externalAbort) externalSignal.removeEventListener("abort", externalAbort);
+  }
+}
 
 function safeJsonParse(value) {
   if (!value) return null;
@@ -53,6 +76,17 @@ function writeStoredSession(session) {
   scheduleRefresh(session);
 }
 
+function userFromAccessToken(token) {
+  try {
+    const part = String(token || "").split(".")[1];
+    if (!part) return null;
+    const base64 = part.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(part.length / 4) * 4, "=");
+    const payload = JSON.parse(atob(base64));
+    if (!payload?.sub) return null;
+    return { id: payload.sub, email: payload.email || null, role: payload.role || "authenticated" };
+  } catch { return null; }
+}
+
 function normalizeSession(raw) {
   if (!raw?.access_token) return null;
   const expiresIn = Number(raw.expires_in || 3600);
@@ -63,7 +97,7 @@ function normalizeSession(raw) {
     token_type: raw.token_type || "bearer",
     expires_in: expiresIn,
     expires_at: expiresAt,
-    user: raw.user || null
+    user: raw.user || userFromAccessToken(raw.access_token)
   };
 }
 
@@ -107,7 +141,7 @@ function authHeaders(session = readStoredSession()) {
 }
 
 async function authFetch(path, { method = "POST", body, session, headers = {} } = {}) {
-  const response = await fetch(`${API_URL}/auth/v1${path}`, {
+  const response = await fetchWithTimeout(`${API_URL}/auth/v1${path}`, {
     method,
     headers: {
       apikey: API_KEY,
@@ -226,7 +260,7 @@ class QueryBuilder {
       const query = params.toString();
       if (query) url += `?${query}`;
 
-      const response = await fetch(url, {
+      const response = await fetchWithTimeout(url, {
         method: this.method,
         headers,
         body: this.body === undefined ? undefined : JSON.stringify(this.body),
@@ -275,7 +309,7 @@ class EquipaSupabaseClient {
 
   async rpc(name, params = {}) {
     try {
-      const response = await fetch(`${API_URL}/rest/v1/rpc/${encodeURIComponent(name)}`, {
+      const response = await fetchWithTimeout(`${API_URL}/rest/v1/rpc/${encodeURIComponent(name)}`, {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify(params || {}),
@@ -367,7 +401,7 @@ class EquipaSupabaseClient {
       try {
         const session = readStoredSession();
         if (!session?.access_token) return { data: null, error: new Error("Sessão necessária.") };
-        const response = await fetch(`${API_URL}/functions/v1/${encodeURIComponent(name)}`, {
+        const response = await fetchWithTimeout(`${API_URL}/functions/v1/${encodeURIComponent(name)}`, {
           method: "POST",
           headers: {
             ...authHeaders(session),
@@ -387,7 +421,10 @@ class EquipaSupabaseClient {
   };
 }
 
-export const supabase = new EquipaSupabaseClient();
+const supabase = new EquipaSupabaseClient();
+window.EquipaSupabase = Object.freeze({ supabase, config });
 
 // Keep existing Supabase-js sessions alive when possible.
 scheduleRefresh(readStoredSession());
+
+})();
