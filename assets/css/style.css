@@ -629,3 +629,12 @@ html,body{background:var(--sf-bg)}
 .scanner-close{font-size:0!important;width:auto!important;padding:8px 10px!important}.scanner-close::after{content:"Fechar";font-size:11px;font-weight:800}
 .mobile-activity-item>b{display:none!important}
 .auth-side{position:relative}.auth-watermark{position:absolute;left:18px;right:18px;bottom:10px;padding:8px;color:#8a8e92}
+
+/* Equipa 0.0.13 HF4: menu de ações contextual simples e legível. */
+.context-menu{width:252px;z-index:1200;}
+.context-menu button{display:grid;grid-template-columns:28px minmax(0,1fr);column-gap:10px;min-height:56px;padding:9px 10px;}
+.context-menu .context-icon{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:#f0f1f2;}
+.context-menu .context-icon svg{width:17px;height:17px;}
+.context-menu button.danger .context-icon{background:#f9eded;}
+.context-menu strong{font-size:12px;line-height:1.35;}
+.context-menu small{font-size:10px;line-height:1.35;margin-top:2px;}

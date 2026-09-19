@@ -77,6 +77,14 @@ function maskEmail(v = "") {
 }
 function errText(error) {
   const raw = error?.message || String(error || "Erro inesperado");
+  if (/foreign key constraint|violates foreign key|23503/i.test(raw))
+    return "Este registro possui histórico relacionado. Desative o equipamento em vez de excluí-lo.";
+  if (/EQUIPA_RETURN_BEFORE_DEACTIVATE/.test(raw))
+    return "Equipamento em uso. Registre a devolução antes de desativá-lo.";
+  if (/EQUIPA_CANCEL_RESERVATIONS_FIRST/.test(raw))
+    return "O equipamento tem reservas futuras. Cancele-as antes de desativá-lo.";
+  if (/EQUIPA_ADMIN_REQUIRED/.test(raw))
+    return "Apenas a administração pode executar esta ação.";
   const code = raw.match(/(ALOCA|DASEIN|EQUIPA)_[A-Z0-9_]+/)?.[0];
   const map = {
     ALOCA_NOT_AUTHENTICATED: "Sua sessão expirou.", ALOCA_ADMIN_REQUIRED: "Esta ação exige administrador.",
@@ -442,22 +450,40 @@ function closeContextMenu(){qs("#equipa-context-menu")?.remove()}
 function openContextMenu(x,y,items=[]){
   closeContextMenu();if(!items.length)return;
   const menu=document.createElement("div");menu.id="equipa-context-menu";menu.className="context-menu";
-  menu.innerHTML=items.map((item,i)=>item.separator?`<div class="context-separator"></div>`:`<button type="button" data-context-index="${i}" class="${item.danger?'danger':''}"><div><strong>${esc(item.label)}</strong>${item.hint?`<small>${esc(item.hint)}</small>`:''}</div></button>`).join("");
+  menu.innerHTML=items.map((item,i)=>item.separator?`<div class="context-separator"></div>`:`<button type="button" data-context-index="${i}" class="${item.danger?'danger':''}"><span class="context-icon">${contextActionIcon(item.icon||'view')}</span><div><strong>${esc(item.label)}</strong><small>${esc(item.hint||'')}</small></div></button>`).join("");
   document.body.append(menu);const rect=menu.getBoundingClientRect();menu.style.left=`${Math.max(8,Math.min(x,innerWidth-rect.width-10))}px`;menu.style.top=`${Math.max(8,Math.min(y,innerHeight-rect.height-10))}px`;
   qsa("[data-context-index]",menu).forEach(b=>b.addEventListener("click",e=>{e.stopPropagation();const item=items[Number(b.dataset.contextIndex)];closeContextMenu();item?.action?.()}));
   const outside=e=>{if(menu.contains(e.target))return;document.removeEventListener("pointerdown",outside,true);closeContextMenu()};
   setTimeout(()=>document.addEventListener("pointerdown",outside,true),0);
 }
 async function deleteEquipment(id){
-  const item=await getEquipment(id).catch(()=>null);if(!item)return;
-  const ok=await confirmAction({title:"Excluir equipamento?",message:`${item.label||item.code} será removido do inventário. Se existir histórico associado, o Equipa preservará o registro e apenas desativará o equipamento.`,confirmText:"Excluir",danger:true});if(!ok)return;
-  const {error}=await supabase.from("equipments").delete().eq("id",id);
-  if(error){
-    const fallback=await supabase.from("equipments").update({is_active:false,status:"unavailable"}).eq("id",id);
-    if(fallback.error)return notify(errText(error),"error");
-    notify("O equipamento possui vínculos históricos e foi desativado sem apagar a rastreabilidade.","warning");
-  } else notify("Equipamento excluído.","success");
-  renderEquipment();
+  if(state.profile?.role!=="admin")return notify("Apenas a administração pode desativar equipamentos.","error");
+  let item;
+  try { item=await getEquipment(id); }
+  catch(error){return notify(errText(error),"error");}
+  const ok=await confirmAction({
+    title:"Desativar equipamento?",
+    message:`${item.label||item.code} deixará de aparecer como disponível. O histórico de retiradas, devoluções e reservas será preservado. Equipamentos em uso ou com reservas futuras precisam ser regularizados antes.`,
+    confirmText:"Desativar",danger:true
+  });
+  if(!ok)return;
+  let error;
+  try { ({error}=await supabase.rpc("deactivate_equipment",{p_equipment_id:id})); }
+  catch(failure){error=failure;}
+  if(error)return notify(errText(error),"error");
+  notify("Equipamento desativado sem apagar o histórico.","success");
+  return renderEquipment();
+}
+function contextActionIcon(name){
+  const paths={
+    view:'<circle cx="11" cy="11" r="3"/><path d="M2 11s3.6-7 9-7 9 7 9 7-3.6 7-9 7-9-7-9-7Z"/>',
+    edit:'<path d="m15 5 4 4M4 20l4.5-1 11-11a2.1 2.1 0 0 0-3-3l-11 11L4 20Z"/>',
+    delete:'<path d="M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13M10 11v5m4-5v5"/>',
+    reserve:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 10h18m-13 5h8"/>',
+    lock:'<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
+    unlock:'<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 7.5-2"/>'
+  };
+  return `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7">${paths[name]||paths.view}</svg>`;
 }
 function bindEquipmentContextMenus(){ /* contexto tratado por delegação global */ }
 function equipmentRows(rows) {
@@ -466,15 +492,42 @@ function equipmentRows(rows) {
 }
 function bindEquipmentRowClicks(root = document) { qsa("[data-equipment]", root).forEach(r => r.addEventListener("click", () => openEquipment(r.dataset.equipment))); bindEquipmentContextMenus(root); }
 function installGlobalContextMenus(){
-  if(document.documentElement.dataset.contextReady)return;document.documentElement.dataset.contextReady="1";
-  document.addEventListener("contextmenu",async e=>{
-    if(state.profile?.role!=="admin")return;
+  if(document.documentElement.dataset.contextReady)return;
+  document.documentElement.dataset.contextReady="1";
+  document.addEventListener("contextmenu",e=>{
+    if(!state.profile)return;
+    const admin=state.profile.role==="admin";
     const equipment=e.target.closest?.("[data-equipment]");
-    if(equipment){e.preventDefault();e.stopPropagation();const id=equipment.dataset.equipment;openContextMenu(e.clientX,e.clientY,[{label:"Editar equipamento",hint:"Alterar cadastro",action:async()=>{const item=await getEquipment(id).catch(()=>null);if(item)openEquipmentForm(item)}},{label:"Excluir equipamento",hint:"Remove ou desativa se houver histórico",danger:true,action:()=>deleteEquipment(id)}]);return;}
+    if(equipment){
+      e.preventDefault();e.stopPropagation();const id=equipment.dataset.equipment;
+      const items=[{icon:"view",label:"Ver equipamento",hint:"Dados e disponibilidade",action:()=>openEquipment(id)}];
+      if(admin){
+        items.push({icon:"edit",label:"Editar",hint:"Atualizar o cadastro",action:async()=>{try{openEquipmentForm(await getEquipment(id))}catch(error){notify(errText(error),"error")}}});
+        items.push({icon:"delete",label:"Desativar",hint:"Preservar histórico escolar",danger:true,action:()=>deleteEquipment(id)});
+      }else{
+        items.push({icon:"reserve",label:"Reservar",hint:"Escolher dia e horário",action:async()=>{try{const item=await getEquipment(id);if(item.status!=="available"||!item.is_active)return notify("Equipamento indisponível.","warning");openReservationModal(item)}catch(error){notify(errText(error),"error")}}});
+      }
+      openContextMenu(e.clientX,e.clientY,items);return;
+    }
     const cart=e.target.closest?.("[data-cart-record]");
-    if(cart){e.preventDefault();e.stopPropagation();let record={};try{record=JSON.parse(cart.dataset.cartRecord||"{}")}catch{}openContextMenu(e.clientX,e.clientY,[{label:"Editar carrinho",hint:"Dados e equipamentos",action:()=>openCartForm(record)},{label:"Desativar carrinho",hint:"Mantém o histórico e invalida o uso",danger:true,action:()=>deactivateCart(record)}]);return;}
+    if(cart){
+      e.preventDefault();e.stopPropagation();let record={};try{record=JSON.parse(cart.dataset.cartRecord||"{}")}catch{}
+      const items=[{icon:"view",label:"Abrir carrinho",hint:"Ver e selecionar equipamentos",action:()=>openCart(record.qr_token)}];
+      if(admin){
+        items.push({icon:"edit",label:"Editar",hint:"Alterar dados e itens",action:()=>openCartForm(record)});
+        items.push({icon:"delete",label:"Desativar",hint:"Retirar da operação",danger:true,action:()=>deactivateCart(record)});
+      }
+      openContextMenu(e.clientX,e.clientY,items);return;
+    }
     const user=e.target.closest?.("[data-user]");
-    if(user){e.preventDefault();e.stopPropagation();let record={};try{record=JSON.parse(user.dataset.user||"{}")}catch{}openContextMenu(e.clientX,e.clientY,[{label:"Editar usuário",action:()=>openUserForm(record)},{label:record.is_active?"Remover acesso":"Restaurar acesso",danger:record.is_active,action:()=>adminUserAction(record,record.is_active?"remove":"restore")},{label:record.is_banned?"Remover banimento":"Banir usuário",danger:!record.is_banned,action:()=>record.is_banned?adminUserAction(record,"unban"):openBanUser(record)}]);}
+    if(user&&admin){
+      e.preventDefault();e.stopPropagation();let record={};try{record=JSON.parse(user.dataset.user||"{}")}catch{}
+      openContextMenu(e.clientX,e.clientY,[
+        {icon:"edit",label:"Editar usuário",hint:"Nome e cargo",action:()=>openUserForm(record)},
+        {icon:record.is_active?"delete":"unlock",label:record.is_active?"Remover acesso":"Restaurar acesso",hint:"Gerenciar permissão",danger:record.is_active,action:()=>adminUserAction(record,record.is_active?"remove":"restore")},
+        {icon:record.is_banned?"unlock":"lock",label:record.is_banned?"Desbanir":"Banir",hint:"Gerenciar bloqueio",danger:!record.is_banned,action:()=>record.is_banned?adminUserAction(record,"unban"):openBanUser(record)}
+      ]);
+    }
   },true);
 }
 function cleanSearch(value) { return String(value || "").replace(/[,%()]/g, " ").trim().slice(0,80); }
@@ -669,6 +722,33 @@ async function openWithdrawalDetail(withdrawalId){
   const m=makeModal(`<div class="panel-head"><div><span class="eyebrow">Retirada ${esc(withdrawalId)}</span><h2>${esc(w.class_name||"Sem turma")} · ${esc(w.destination||"Sem destino")}</h2></div><button class="icon-button" data-close>×</button></div><div class="modal-body"><div class="withdrawal-meta">${detail("Responsável",w.responsible_name)}${detail("Aluno",w.student_name)}${detail("Retirada",dt(w.withdrawn_at))}${detail("Devolução final",dt(w.returned_at))}</div><div class="return-list">${(items||[]).map(i=>`<div class="return-item"><div><strong>${esc(i.equipments?.label||i.equipments?.code||"Equipamento")}</strong><span>${esc(schoolGroupLabel(i.equipments?.school_group))} · ${esc(i.equipments?.brand||"")} ${esc(i.equipments?.model||"")}</span></div>${i.returned_at?`<span class="return-date">Devolvido em ${esc(dt(i.returned_at))}</span>`:`<button class="button primary small" type="button" data-return-item="${esc(i.equipment_id)}">Registrar devolução</button>`}</div>`).join("")}</div></div>`,true);
   qsa("[data-return-item]",m).forEach(b=>b.addEventListener("click",async()=>{setBusy(b,true,"Registrando…");const {error}=await supabase.rpc("return_equipment",{p_equipment_id:b.dataset.returnItem,p_client_action_id:uid()});setBusy(b,false);if(error)return notify(errText(error),"error");notify("Devolução registrada com data e horário.","success");m.remove();await loadWithdrawals();openWithdrawalDetail(withdrawalId)}));
 }
+
+async function renderReservations() {
+  state.view="reservations";
+  const filterCount = activeFilterCount([state.reservationsStatus]);
+  shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Agenda</span><h2>Reservas futuras</h2><p>Organize a utilização dos equipamentos sem conflitos de horário.</p></div></div><div class="toolbar workspace-toolbar"><div class="toolbar-cluster"><input id="reservation-search" class="search" type="search" value="${esc(state.reservationsSearch)}" placeholder="Buscar equipamento, turma, destino ou período"><button class="filter-button ${filterCount ? 'has-active active' : ''}" id="reservation-filter-toggle" type="button" aria-expanded="${filterCount ? 'true' : 'false'}"><span>Filtros</span>${filterBadge(filterCount)}</button></div></div><div class="filter-drawer" id="reservation-filter-panel"><div class="filter-grid"><label>Status<select id="reservation-status"><option value="">Todos</option><option value="confirmed" ${state.reservationsStatus==='confirmed'?'selected':''}>Confirmada</option><option value="fulfilled" ${state.reservationsStatus==='fulfilled'?'selected':''}>Utilizada</option><option value="cancelled" ${state.reservationsStatus==='cancelled'?'selected':''}>Cancelada</option><option value="expired" ${state.reservationsStatus==='expired'?'selected':''}>Expirada</option></select></label></div><div class="filter-actions"><button class="button small ghost" id="reservation-filter-clear" type="button">Limpar filtros</button><button class="button primary small" id="reservation-filter-apply" type="button">Aplicar</button></div></div><div id="reservations"><div class="loading">Carregando reservas…</div></div></section>`);
+  const h=qs("#reservations");
+  let data, error;
+  try {
+    ({data,error}=await supabase.from("reservations").select("id,equipment_id,user_id,class_name,destination,start_at,end_at,notes,status,withdrawal_id,created_at,equipments(code,label,brand,model,status)").order("start_at",{ascending:true}).limit(400));
+  } catch (failure) { error=failure; }
+  if(!h)return;
+  if(error){h.innerHTML=`<div class="empty"><strong>Não foi possível carregar as reservas.</strong><span>${esc(errText(error))}</span><button type="button" class="button" id="retry-reservations">Tentar novamente</button></div>`;qs("#retry-reservations")?.addEventListener("click",renderReservations);return}
+  let rows = data || [];
+  rows = rows.map(r => ({ ...r, computed_status: r.status === 'confirmed' && new Date(r.end_at) < new Date() ? 'expired' : r.status }));
+  rows = smartFilter(rows, state.reservationsSearch, r => [r.equipments?.label, r.equipments?.code, r.class_name, r.destination, r.notes, statusLabel(r.computed_status), dt(r.start_at), dt(r.end_at)]);
+  if (state.reservationsStatus) rows = rows.filter(r => r.computed_status === state.reservationsStatus);
+  if(!rows.length){h.innerHTML=`<div class="empty"><strong>Nenhuma reserva.</strong><span>Abra um equipamento disponível e escolha Reservar.</span></div>`;} else {
+    h.innerHTML=`<div class="data-list">${rows.map(r=>{const st=r.computed_status;const expired=st==='expired';return `<div class="data-row"><div class="data-main"><strong>${esc(r.equipments?.label||r.equipments?.code||"Equipamento")}</strong><span>${esc(r.class_name)} · ${esc(r.destination)} · ${esc(dt(r.start_at))} até ${esc(dt(r.end_at))}</span></div><span class="status status-${esc(st)}">${esc(statusLabel(st))}</span><div class="row-actions">${r.status==="confirmed"&&!expired?`<button class="button small" data-cancel-res="${r.id}">Cancelar</button>${r.user_id === state.profile.id ? `<button class="button primary small" data-use-res="${r.id}">Retirar</button>` : ""}`:""}</div></div>`}).join("")}</div>`;
+  }
+  let timer; qs("#reservation-search")?.addEventListener("input", e => { clearTimeout(timer); timer=setTimeout(()=>{state.reservationsSearch=e.target.value; renderReservations();}, 180); });
+  wireFilterToggle("reservation-filter-toggle", "reservation-filter-panel");
+  qs("#reservation-filter-apply")?.addEventListener("click", () => { state.reservationsStatus = qs("#reservation-status")?.value || ""; renderReservations(); });
+  qs("#reservation-filter-clear")?.addEventListener("click", () => { state.reservationsStatus = ""; renderReservations(); });
+  qsa("[data-cancel-res]").forEach(b=>b.addEventListener("click",async()=>{const ok=await confirmAction({title:"Cancelar reserva?",message:"O horário ficará disponível novamente para este equipamento.",confirmText:"Cancelar reserva",danger:true});if(!ok)return;setBusy(b,true,"…");const {error}=await supabase.rpc("cancel_reservation",{p_reservation_id:Number(b.dataset.cancelRes)});setBusy(b,false);if(error)return notify(errText(error),"error");notify("Reserva cancelada.","success");renderReservations()}));
+  qsa("[data-use-res]").forEach(b=>b.addEventListener("click",async()=>{setBusy(b,true,"Retirando…");const {error}=await supabase.rpc("checkout_reservation",{p_reservation_id:Number(b.dataset.useRes),p_client_action_id:uid()});setBusy(b,false);if(error)return notify(errText(error),"error");notify("Reserva convertida em retirada.","success");navigate("withdrawals")}));
+}
+
 
 async function renderHistory() {
   state.view="history";
