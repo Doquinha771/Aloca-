@@ -94,12 +94,12 @@ function errText(error) {
 function notify(message, type = "info") {
   const host = qs("#toast-host");
   if (!host) return;
-  const titles = { success: "Concluído", error: "Não foi possível concluir", warning: "Atenção", info: "Dasein" };
+  const titles = { success: "Concluído", error: "Não foi possível concluir", warning: "Atenção", info: "Equipa" };
   const marks = { success: "✓", error: "!", warning: "!", info: "i" };
   const el = document.createElement("section");
   el.className = `dasein-infobox ${type}`;
   el.setAttribute("role", type === "error" ? "alert" : "status");
-  el.innerHTML = `<span class="infobox-mark" aria-hidden="true">${marks[type] || "i"}</span><div class="infobox-copy"><strong>${esc(titles[type] || "Dasein")}</strong><p>${esc(message)}</p></div><button class="infobox-close" type="button" aria-label="Fechar aviso">×</button><span class="infobox-timer" aria-hidden="true"></span>`;
+  el.innerHTML = `<span class="infobox-mark" aria-hidden="true">${marks[type] || "i"}</span><div class="infobox-copy"><strong>${esc(titles[type] || "Equipa")}</strong><p>${esc(message)}</p></div><button class="infobox-close" type="button" aria-label="Fechar aviso">×</button><span class="infobox-timer" aria-hidden="true"></span>`;
   host.prepend(el);
   while (host.children.length > 4) host.lastElementChild?.remove();
   const remove = () => { el.classList.add("leaving"); setTimeout(() => el.remove(), 190); };
@@ -108,7 +108,7 @@ function notify(message, type = "info") {
 }
 function confirmAction({ title = "Confirmar ação", message, confirmText = "Confirmar", cancelText = "Voltar", danger = false } = {}) {
   return new Promise(resolve => {
-    const modal = makeModal(`<div class="confirm-box"><span class="confirm-symbol ${danger ? "danger" : ""}">${danger ? "!" : "?"}</span><div><span class="eyebrow">Dasein</span><h2>${esc(title)}</h2><p>${esc(message || "Confirme para continuar.")}</p></div></div><div class="modal-actions confirm-actions"><button class="button" type="button" data-confirm-no>${esc(cancelText)}</button><button class="button ${danger ? "danger-solid" : "primary"}" type="button" data-confirm-yes>${esc(confirmText)}</button></div>`);
+    const modal = makeModal(`<div class="confirm-box"><span class="confirm-symbol ${danger ? "danger" : ""}">${danger ? "!" : "?"}</span><div><span class="eyebrow">Equipa</span><h2>${esc(title)}</h2><p>${esc(message || "Confirme para continuar.")}</p></div></div><div class="modal-actions confirm-actions"><button class="button" type="button" data-confirm-no>${esc(cancelText)}</button><button class="button ${danger ? "danger-solid" : "primary"}" type="button" data-confirm-yes>${esc(confirmText)}</button></div>`);
     let settled = false;
     const finish = value => { if (settled) return; settled = true; modal.remove(); resolve(value); };
     qs("[data-confirm-no]", modal)?.addEventListener("click", () => finish(false));
@@ -154,13 +154,13 @@ function renderAuth(scan = null) {
   app.innerHTML = `
   <main class="auth-shell">
     <section class="auth-brand">
-      <div class="brandline"><div class="brandmark">D</div><strong>Dasein</strong></div>
+      <div class="brandline"><div class="brandmark">D</div><strong>Equipa</strong></div>
       <div class="auth-brand-copy"><span class="eyebrow" style="color:rgba(255,255,255,.65)">Equipamentos escolares</span><h1>Um lugar para saber onde cada equipamento está.</h1><p>Reservas, retiradas, devoluções, carrinhos, QR Codes, manutenção e histórico usando o mesmo Supabase do Aloca+.</p></div>
-      <span class="auth-version">Dasein ${esc(config.version)} · Web</span>
+      <span class="auth-version">Equipa ${esc(config.version)} · Web</span>
     </section>
     <section class="auth-side">
       <div class="auth-card" id="auth-card">
-        <span class="eyebrow">Acesso</span><h2>Entrar no Dasein</h2><p>Use sua conta escolar cadastrada.</p>
+        <span class="eyebrow">Acesso</span><h2>Entrar no Equipa</h2><p>Use sua conta escolar cadastrada.</p>
         ${scan ? `<div class="scan-preview"><span>QR reconhecido · ${esc(scan.kind === "cart" ? "Carrinho" : "Equipamento")}</span><strong>${esc(scan.display_name)}</strong><span>${scan.model ? `${esc(scan.brand || "")} ${esc(scan.model)}` : `${Number(scan.item_count || 0)} equipamento(s)`}</span>${scan.status ? `<span class="status status-${esc(scan.status)}">${esc(statusLabel(scan.status))}</span>` : ""}</div>` : ""}
         <div class="auth-tabs"><button class="auth-tab active" data-tab="login" type="button">Entrar</button><button class="auth-tab" data-tab="signup" type="button">Criar conta</button></div>
         <form id="login-form" class="auth-form">
@@ -202,6 +202,7 @@ function renderAuth(scan = null) {
     e.preventDefault(); const b = qs('button[type="submit"]', e.currentTarget); setBusy(b, true, "Criando…");
     const { data, error } = await supabase.auth.signUp({ email: qs("#signup-email").value.trim(), password: qs("#signup-password").value, options: { data: { full_name: qs("#signup-name").value.trim() } } });
     setBusy(b, false); if (error) return notify(errText(error), "error");
+    if (data.session) await supabase.rpc("accept_legal_documents", { p_terms_version: config.legalTermsVersion, p_privacy_version: config.privacyVersion });
     notify(data.session ? "Conta criada." : "Conta criada. Confirme o e-mail para entrar.", "success");
     if (!data.session) qs('[data-tab="login"]').click();
   });
@@ -211,10 +212,59 @@ function renderAuth(scan = null) {
     notify(error ? errText(error) : "Instruções de recuperação enviadas.", error ? "error" : "success");
   });
 }
+function legalDocument(kind) {
+  const terms = kind === "terms";
+  if (terms) return `<div class="legal-doc">
+    <p class="legal-lead"><strong>Termos de Uso do Equipa</strong><br>Versão ${esc(config.legalTermsVersion)}. O Equipa é uma plataforma escolar destinada ao controle de equipamentos, reservas, retiradas, devoluções, manutenção e auditoria operacional.</p>
+    <h3>1. Quem pode usar</h3><p>O acesso é restrito a pessoas autorizadas pela unidade escolar. Cada usuário deve usar sua própria conta e respeitar as permissões associadas ao seu perfil.</p>
+    <h3>2. Uso correto</h3><p>Os registros devem representar movimentações reais. É proibido alterar dados para ocultar retirada, devolução, manutenção, identidade do responsável ou qualquer ocorrência relacionada aos equipamentos.</p>
+    <h3>3. Responsabilidade da conta</h3><p>Credenciais não devem ser compartilhadas. O usuário deve comunicar à escola suspeitas de acesso indevido, perda de senha ou atividade incomum.</p>
+    <h3>4. Equipamentos e QR Codes</h3><p>QR Codes servem para identificar equipamentos ou carrinhos. A leitura de um QR não concede permissões adicionais: toda ação continua sujeita à autenticação, ao cargo e às regras do sistema.</p>
+    <h3>5. Segurança e auditoria</h3><p>A plataforma pode registrar ações operacionais necessárias à segurança, integridade e rastreabilidade do inventário. Tentativas de burlar controles, acessar registros sem autorização ou explorar vulnerabilidades podem resultar em bloqueio da conta e comunicação à administração escolar.</p>
+    <h3>6. Disponibilidade</h3><p>A escola pode realizar manutenção, atualizar funcionalidades ou suspender temporariamente o serviço quando necessário para segurança ou continuidade operacional.</p>
+    <h3>7. Alterações destes termos</h3><p>Versões futuras devem indicar sua data ou número de versão. Quando houver mudança relevante, uma nova aceitação poderá ser solicitada.</p>
+    <h3>8. Contato</h3><p>Dúvidas sobre uso, conta ou registros devem ser encaminhadas pelo ${esc(config.privacyContact)}.</p>
+  </div>`;
+  return `<div class="legal-doc">
+    <p class="legal-lead"><strong>Política de Privacidade do Equipa</strong><br>Versão ${esc(config.privacyVersion)}. Esta política descreve como dados pessoais são tratados no uso escolar da plataforma, observando a Lei nº 13.709/2018 (LGPD) e, quando aplicável, as normas de proteção de crianças e adolescentes.</p>
+    <h3>1. Controlador</h3><p>${esc(config.controllerName)} é responsável por definir as finalidades e regras de tratamento. Solicitações sobre dados pessoais devem ser encaminhadas pelo ${esc(config.privacyContact)}.</p>
+    <h3>2. Dados tratados</h3><p>Podem ser tratados nome, e-mail escolar, perfil de acesso, identificadores de conta e registros operacionais necessários a reservas, retiradas, devoluções, turmas, destinos, manutenção e auditoria. O Equipa foi projetado para evitar armazenar dados pessoais desnecessários e não grava imagens do leitor de QR.</p>
+    <h3>3. Finalidades</h3><p>Os dados são usados para autenticar usuários, controlar permissões, administrar o inventário, registrar responsabilidade sobre equipamentos, prevenir conflitos de reserva, investigar inconsistências, manter segurança e cumprir obrigações administrativas da unidade escolar.</p>
+    <h3>4. Bases legais</h3><p>A unidade escolar deve documentar a hipótese legal adequada para cada operação de tratamento, conforme a LGPD. Consentimento não é tratado como base universal. Quando a lei exigir consentimento, ele deve ser livre, informado, inequívoco e revogável.</p>
+    <h3>5. Crianças e adolescentes</h3><p>O tratamento de dados de crianças e adolescentes deve observar seu melhor interesse. A escola deve limitar a coleta ao estritamente necessário, adotar linguagem adequada e observar as regras específicas aplicáveis ao público menor de idade.</p>
+    <h3>6. Compartilhamento e operadores</h3><p>Dados podem ser processados por fornecedores de infraestrutura contratados para operar a plataforma, como serviços de autenticação e banco de dados. O compartilhamento com terceiros deve ocorrer apenas quando necessário, autorizado ou exigido por lei.</p>
+    <h3>7. Retenção e descarte</h3><p>Registros são mantidos pelo período necessário às finalidades escolares, segurança, prestação de contas e obrigações legais. Dados que deixarem de ser necessários devem ser eliminados, anonimizados ou arquivados de forma adequada conforme a política de retenção da escola.</p>
+    <h3>8. Direitos do titular</h3><p>Nos termos da LGPD, o titular pode solicitar, quando aplicável, confirmação do tratamento, acesso, correção, informação sobre compartilhamentos, anonimização, bloqueio ou eliminação de dados inadequados ou excessivos, oposição, revogação de consentimento e demais direitos previstos em lei.</p>
+    <h3>9. Segurança</h3><p>O Equipa utiliza autenticação, controle de acesso por função, Row Level Security no banco, conexão HTTPS, minimização de dados e ocultação de informações pessoais na interface administrativa. Nenhuma chave administrativa secreta é armazenada no frontend público.</p>
+    <h3>10. Incidentes</h3><p>Suspeitas de vazamento ou acesso indevido devem ser comunicadas imediatamente à administração escolar. O controlador é responsável por avaliar o incidente e realizar comunicações legalmente exigidas aos titulares e à Autoridade Nacional de Proteção de Dados.</p>
+    <h3>11. Armazenamento no navegador</h3><p>A aplicação pode usar armazenamento local estritamente necessário para manter a sessão e preferências técnicas. O Equipa não utiliza esses dados para publicidade comportamental.</p>
+    <h3>12. Atualizações</h3><p>Alterações relevantes desta política devem gerar nova versão e, quando necessário, nova ciência ou aceite do usuário.</p>
+  </div>`;
+}
 function openLegal(kind) {
   const terms = kind === "terms";
-  makeModal(`<div class="panel-head"><div><span class="eyebrow">Dasein</span><h2>${terms ? "Termos de Uso" : "Política de Privacidade"}</h2></div><button class="icon-button" data-close>×</button></div><div class="modal-body"><p>Documento preliminar para a fase de testes do Dasein. Antes da adoção oficial, a escola deverá revisar e publicar a versão institucional.</p>${terms ? `<p>O usuário deve utilizar a plataforma apenas para atividades autorizadas da escola, respeitar as permissões do seu cargo e registrar retiradas e devoluções corretamente.</p>` : `<p>O Dasein coleta somente dados de conta e registros necessários para autenticação, reservas, retiradas, devoluções, manutenção e administração. QR Codes não carregam dados pessoais.</p><p>Dados operacionais permanecem protegidos por autenticação e Row Level Security no Supabase.</p>`}</div>`);
+  makeModal(`<div class="panel-head"><div><span class="eyebrow">Equipa · LGPD</span><h2>${terms ? "Termos de Uso" : "Política de Privacidade"}</h2></div><button class="icon-button" data-close>×</button></div><div class="modal-body legal-modal-body">${legalDocument(kind)}</div>`, true);
 }
+async function hasCurrentLegalAcceptance() {
+  const { data, error } = await supabase.rpc("has_current_legal_acceptance", { p_terms_version: config.legalTermsVersion, p_privacy_version: config.privacyVersion });
+  if (error) { console.warn("Legal acceptance check unavailable", error); return true; }
+  return data === true;
+}
+function requestLegalAcceptance() {
+  return new Promise(resolve => {
+    const back = document.createElement("div");
+    back.className = "modal-backdrop legal-gate-backdrop";
+    back.innerHTML = `<section class="modal wide legal-gate" role="dialog" aria-modal="true"><div class="panel-head"><div><span class="eyebrow">Privacidade e uso responsável</span><h2>Antes de continuar no Equipa</h2></div></div><div class="modal-body"><p class="legal-gate-intro">A escola precisa manter registro da versão dos documentos que você aceitou. Leia os textos abaixo antes de continuar.</p><div class="legal-gate-links"><button class="button" type="button" data-read-terms>Termos de Uso</button><button class="button" type="button" data-read-privacy>Política de Privacidade</button></div><label class="check legal-check"><input type="checkbox" id="legal-accept-check"><span>Li e estou ciente dos Termos de Uso e da Política de Privacidade, versões ${esc(config.legalTermsVersion)} e ${esc(config.privacyVersion)}.</span></label><div class="modal-actions"><button class="button ghost" type="button" data-legal-exit>Sair</button><button class="button primary" type="button" data-legal-accept disabled>Continuar</button></div></div></section>`;
+    document.body.append(back);
+    const check=qs("#legal-accept-check",back), accept=qs("[data-legal-accept]",back);
+    check.addEventListener("change",()=>{accept.disabled=!check.checked});
+    qs("[data-read-terms]",back).addEventListener("click",()=>openLegal("terms"));
+    qs("[data-read-privacy]",back).addEventListener("click",()=>openLegal("privacy"));
+    qs("[data-legal-exit]",back).addEventListener("click",async()=>{back.remove();await supabase.auth.signOut();resolve(false)});
+    accept.addEventListener("click",async()=>{setBusy(accept,true,"Registrando…");const {error}=await supabase.rpc("accept_legal_documents",{p_terms_version:config.legalTermsVersion,p_privacy_version:config.privacyVersion});setBusy(accept,false);if(error)return notify(errText(error),"error");back.remove();notify("Preferências legais registradas.","success");resolve(true)});
+  });
+}
+async function ensureLegalAcceptance(){if(await hasCurrentLegalAcceptance())return true;return requestLegalAcceptance();}
 
 async function loadProfile() {
   const { data, error } = await supabase.from("profiles").select("id,full_name,role,created_at,updated_at").eq("id", state.session.user.id).single();
@@ -222,7 +272,7 @@ async function loadProfile() {
   state.profile = data;
 }
 function pageTitle() {
-  return ({ dashboard: "Visão geral", equipment: "Equipamentos", withdrawals: "Retiradas", reservations: "Reservas", history: "Histórico", carts: "Carrinhos", maintenance: "Manutenção", admin: "Administração" })[state.view] || "Dasein";
+  return ({ dashboard: "Visão geral", equipment: "Equipamentos", withdrawals: "Retiradas", reservations: "Reservas", history: "Histórico", carts: "Carrinhos", maintenance: "Manutenção", admin: "Administração" })[state.view] || "Equipa";
 }
 function firstName() { return (state.profile?.full_name || "Usuário").trim().split(/\s+/)[0] || "Usuário"; }
 function greeting() {
@@ -254,7 +304,7 @@ function shell(content) {
   const mobileMoreItems = `${nav("reservations","Reservas","reservations")}${nav("history","Histórico","history")}${nav("carts","Carrinhos","carts")}${admin ? nav("maintenance","Manutenção","maintenance") + nav("admin","Administração","admin") : ""}`;
   app.innerHTML = `<div class="app-shell">
     <aside class="sidebar" id="sidebar">
-      <div class="sidebar-brand" title="Dasein"><div class="brandmark small">D</div><div class="brand-copy"><strong>Dasein</strong><span>Gestão escolar</span></div></div>
+      <div class="sidebar-brand" title="Equipa"><div class="brandmark small">D</div><div class="brand-copy"><strong>Equipa</strong><span>Gestão escolar</span></div></div>
       <nav class="nav" aria-label="Navegação principal">
         ${nav("dashboard","Início","dashboard")}${nav("equipment","Equipamentos","equipment")}${nav("withdrawals","Retiradas","withdrawals")}${nav("reservations","Reservas","reservations")}${nav("history","Histórico","history")}${nav("carts","Carrinhos","carts")}${admin ? nav("maintenance","Manutenção","maintenance") + nav("admin","Administração","admin") : ""}
       </nav>
@@ -262,7 +312,7 @@ function shell(content) {
     </aside>
     <section class="main">
       <header class="topbar">
-        <div class="topbar-greeting"><button class="nav-icon menu-toggle" id="menu" aria-label="Abrir menu">☰</button><div><span class="topbar-kicker">Dasein</span><strong>${esc(pageTitle())}</strong></div></div>
+        <div class="topbar-greeting"><button class="nav-icon menu-toggle" id="menu" aria-label="Abrir menu">☰</button><div><span class="topbar-kicker">Equipa</span><strong>${esc(pageTitle())}</strong></div></div>
         <form class="global-search" id="global-search-form" role="search"><span>${icon("search")}</span><input id="global-search" type="search" value="${esc(currentGlobalSearchValue())}" placeholder="Pesquisar equipamento, turma, aluno ou manutenção" autocomplete="off"></form>
         <button class="account-chip" id="account-chip" type="button"><span class="account-avatar">${icon("user")}</span><span><strong>${esc(firstName())}</strong><small>${esc(roleLabel(state.profile?.role))}</small></span><b>⌄</b></button>
       </header>
@@ -271,7 +321,7 @@ function shell(content) {
     <nav class="mobile-tabbar" aria-label="Navegação do aplicativo">
       ${mobileNav("dashboard","Início","dashboard")}${mobileNav("equipment","Equipamentos","equipment")}<button class="mobile-nav-item mobile-qr-action" id="mobile-qr-scan" type="button" aria-label="Ler QR Code"><span>${icon("qr")}</span><small>Ler QR</small></button>${mobileNav("withdrawals","Retiradas","withdrawals")}<button class="mobile-nav-item" id="mobile-more" type="button"><span>${icon("admin")}</span><small>Mais</small></button>
     </nav>
-    <div class="mobile-more-backdrop" id="mobile-more-backdrop"><section class="mobile-more-sheet"><div class="mobile-sheet-handle"></div><div class="mobile-sheet-head"><div><span>Mais opções</span><strong>Dasein</strong></div><button class="icon-button" id="mobile-more-close" type="button">×</button></div><div class="mobile-more-list">${mobileMoreItems}</div><button class="mobile-sheet-logout" id="mobile-sheet-logout" type="button">${icon("logout")}<span>Sair da conta</span></button></section></div>
+    <div class="mobile-more-backdrop" id="mobile-more-backdrop"><section class="mobile-more-sheet"><div class="mobile-sheet-handle"></div><div class="mobile-sheet-head"><div><span>Mais opções</span><strong>Equipa</strong></div><button class="icon-button" id="mobile-more-close" type="button">×</button></div><div class="mobile-more-list">${mobileMoreItems}</div><button class="mobile-sheet-logout" id="mobile-sheet-logout" type="button">${icon("logout")}<span>Sair da conta</span></button></section></div>
   </div>`;
   qsa("[data-view]").forEach(b => b.addEventListener("click", () => navigate(b.dataset.view)));
   qs("#menu")?.addEventListener("click", () => qs("#sidebar")?.classList.toggle("open"));
@@ -327,7 +377,8 @@ async function renderDashboard() {
   const maintenancePct = Math.round(maintenance/safeTotal*100);
   const today = new Intl.DateTimeFormat("pt-BR", { weekday:"long", day:"2-digit", month:"long" }).format(new Date());
 
-  shell(`<section class="future-home">
+  const recentMobile = (current || []).slice(0,4);
+  shell(`<section class="future-home desktop-dashboard">
     <header class="future-welcome"><div><span class="future-breadcrumb">Início</span><h1>Olá, ${esc(firstName())}</h1><p>${esc(roleLabel(state.profile.role))} · ${esc(today)}</p></div></header>
 
     <section class="future-status-row" aria-label="Resumo da operação">
@@ -350,28 +401,47 @@ async function renderDashboard() {
       </section>
     </div>
 
-    <section class="future-platforms">
-      <div class="future-section-head"><div><span class="section-overline">ACESSO RÁPIDO</span><h2>Ferramentas do Dasein</h2></div></div>
-      <div class="future-platform-grid">
-        ${futureTile("equipment","Equipamentos","Inventário e QR","equipment")}
-        ${futureTile("withdrawals","Retiradas","Uso e devolução","withdrawals")}
-        ${futureTile("reservations","Reservas","Agenda de equipamentos","reservations")}
-        ${futureTile("carts","Carrinhos","Lotes por QR","carts")}
-        ${futureTile("history","Histórico","Auditoria operacional","history")}
-        ${admin?futureTile("maintenance","Manutenção","Oficina técnica","maintenance"):""}
-        ${admin?futureTile("admin","Administração","Usuários e banco","admin"):""}
+  </section>
+
+  <section class="mobile-dashboard-organic" aria-label="Visão geral mobile">
+    <header class="mobile-home-hero">
+      <div class="mobile-home-eyebrow"><span>Hoje</span><small>${esc(today)}</small></div>
+      <div class="mobile-home-greeting"><h1>Olá, ${esc(firstName())}</h1><span>${esc(roleLabel(state.profile.role))}</span></div>
+      <div class="mobile-home-health">
+        <div class="mobile-health-copy"><strong>${Number(available).toLocaleString("pt-BR")}</strong><span>disponíveis de ${Number(total).toLocaleString("pt-BR")}</span><small>${availablePct}% do inventário pronto para uso</small></div>
+        <div class="mobile-health-ring" style="--health:${availablePct * 3.6}deg"><div><strong>${availablePct}%</strong><span>livre</span></div></div>
+      </div>
+      <div class="mobile-home-progress" aria-hidden="true"><i style="width:${availablePct}%"></i><i class="use" style="width:${inUsePct}%"></i><i class="maint" style="width:${maintenancePct}%"></i></div>
+    </header>
+
+    <section class="mobile-flow-section mobile-now">
+      <div class="mobile-section-title"><div><span>AGORA</span><h2>O que está acontecendo</h2></div></div>
+      <div class="mobile-stat-flow">
+        <button class="mobile-stat-pill" data-go="withdrawals" type="button"><span class="mobile-stat-icon">${icon("withdrawals")}</span><div><strong>${Number(inUse).toLocaleString("pt-BR")}</strong><span>Em uso</span><small>${pendingReturns} para devolver</small></div></button>
+        <button class="mobile-stat-pill" data-go="reservations" type="button"><span class="mobile-stat-icon">${icon("reservations")}</span><div><strong>${Number(reservations).toLocaleString("pt-BR")}</strong><span>Reservas</span><small>Confirmadas</small></div></button>
+        <button class="mobile-stat-pill ${maintenance ? 'attention' : ''}" data-go="${admin?"maintenance":"equipment"}" type="button"><span class="mobile-stat-icon">${icon("maintenance")}</span><div><strong>${Number(maintenance).toLocaleString("pt-BR")}</strong><span>Manutenção</span><small>${maintenance ? 'Exigem atenção' : 'Tudo certo'}</small></div></button>
+      </div>
+    </section>
+
+    <section class="mobile-flow-section mobile-activity-feed">
+      <div class="mobile-section-title"><div><span>ATIVIDADE</span><h2>Movimentações recentes</h2></div><button type="button" data-open="withdrawals">Ver todas</button></div>
+      <div class="mobile-activity-list">
+        ${recentMobile.length ? recentMobile.map((r,i)=>`<button type="button" class="mobile-activity-item" data-go="withdrawals"><span class="mobile-activity-dot ${i===0?'live':''}"></span><div><strong>${esc(r.class_name||"Sem turma")}</strong><span>${esc(r.destination||"Sem destino")}${r.student_name?` · ${esc(r.student_name)}`:""}</span><small>${Number(r.pending_count||0)} pendente(s) · ${esc(dt(r.withdrawn_at))}</small></div><b>›</b></button>`).join("") : `<div class="mobile-empty-state"><span>${icon("history")}</span><strong>Nenhuma movimentação agora</strong><small>As próximas retiradas vão aparecer aqui.</small></div>`}
       </div>
     </section>
   </section>`);
 
   qsa("[data-go],[data-open]").forEach(b => b.addEventListener("click", () => navigate(b.dataset.go || b.dataset.open)));
 }
-function futureTile(view,title,subtitle,iconName){return `<button class="future-platform-tile" type="button" data-go="${view}"><span>${icon(iconName)}</span><div><strong>${esc(title)}</strong><small>${esc(subtitle)}</small></div><b>›</b></button>`;}
+function closeContextMenu(){qs("#equipa-context-menu")?.remove()}
+function openContextMenu(x,y,items=[]){closeContextMenu();if(!items.length)return;const menu=document.createElement("div");menu.id="equipa-context-menu";menu.className="context-menu";menu.innerHTML=items.map((item,i)=>item.separator?`<div class="context-separator"></div>`:`<button type="button" data-context-index="${i}" class="${item.danger?'danger':''}">${item.icon?`<span>${icon(item.icon)}</span>`:''}<div><strong>${esc(item.label)}</strong>${item.hint?`<small>${esc(item.hint)}</small>`:''}</div></button>`).join("");document.body.append(menu);const rect=menu.getBoundingClientRect();menu.style.left=`${Math.min(x,innerWidth-rect.width-10)}px`;menu.style.top=`${Math.min(y,innerHeight-rect.height-10)}px`;qsa("[data-context-index]",menu).forEach(b=>b.addEventListener("click",()=>{const item=items[Number(b.dataset.contextIndex)];closeContextMenu();item?.action?.()}));setTimeout(()=>document.addEventListener("pointerdown",closeContextMenu,{once:true}),0)}
+async function deleteEquipment(id){const item=await getEquipment(id).catch(()=>null);if(!item)return;const ok=await confirmAction({title:"Excluir equipamento?",message:`${item.label||item.code} será removido do inventário. Registros históricos podem impedir a exclusão; nesse caso, deixe-o inativo.`,confirmText:"Excluir",danger:true});if(!ok)return;const {error}=await supabase.from("equipments").delete().eq("id",id);if(error)return notify(`${errText(error)} Se o equipamento possui histórico, edite-o e marque como inativo.`,"error");notify("Equipamento excluído.","success");renderEquipment()}
+function bindEquipmentContextMenus(root=document){if(state.profile?.role!=="admin")return;qsa("[data-equipment]",root).forEach(row=>row.addEventListener("contextmenu",async e=>{e.preventDefault();const id=row.dataset.equipment;openContextMenu(e.clientX,e.clientY,[{label:"Editar",hint:"Alterar dados do equipamento",icon:"equipment",action:async()=>{const item=await getEquipment(id).catch(()=>null);if(item)openEquipmentForm(item)}},{label:"Excluir",hint:"Remover do inventário",icon:"maintenance",danger:true,action:()=>deleteEquipment(id)}])}))}
 function equipmentRows(rows) {
   if (!rows.length) return `<div class="empty"><strong>Nenhum equipamento.</strong><span>Os registros aparecerão aqui.</span></div>`;
   return `<div class="data-list">${rows.map(e => `<button class="data-row" data-equipment="${esc(e.id)}" type="button"><div class="data-main"><strong>${esc(e.label || e.code)}</strong><span>${esc(e.brand)} ${esc(e.model)} · ${esc(e.asset_tag || e.code)}</span></div><span class="status status-${esc(e.status)}">${esc(statusLabel(e.status))}</span><span class="data-date">${esc(dt(e.updated_at))}</span></button>`).join("")}</div>`;
 }
-function bindEquipmentRowClicks(root = document) { qsa("[data-equipment]", root).forEach(r => r.addEventListener("click", () => openEquipment(r.dataset.equipment))); }
+function bindEquipmentRowClicks(root = document) { qsa("[data-equipment]", root).forEach(r => r.addEventListener("click", () => openEquipment(r.dataset.equipment))); bindEquipmentContextMenus(root); }
 function cleanSearch(value) { return String(value || "").replace(/[,%()]/g, " ").trim().slice(0,80); }
 function normalizeSearchText(value = "") {
   return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -411,11 +481,15 @@ function filterBadge(count) { return count ? `<span class="filter-count">${count
 function wireFilterToggle(toggleId, panelId) {
   const btn = qs(`#${toggleId}`); const panel = qs(`#${panelId}`);
   if (!btn || !panel) return;
-  btn.addEventListener("click", () => {
-    const open = panel.classList.toggle("open");
-    btn.classList.toggle("active", open);
-    btn.setAttribute("aria-expanded", open ? "true" : "false");
-  });
+  if (!qs(".filter-sheet-head",panel)) panel.insertAdjacentHTML("afterbegin",`<div class="filter-sheet-head"><div><span>Filtros</span><strong>Refine os resultados</strong></div><button type="button" class="filter-sheet-close" aria-label="Fechar">×</button></div>`);
+  const setOpen = open => {
+    panel.classList.toggle("open",open); btn.classList.toggle("active",open); btn.setAttribute("aria-expanded",open?"true":"false");
+    let shade=qs("#filter-mobile-shade");
+    if(open && matchMedia("(max-width:820px)").matches){if(!shade){shade=document.createElement("div");shade.id="filter-mobile-shade";shade.className="filter-mobile-shade";document.body.append(shade);shade.addEventListener("click",()=>setOpen(false))}requestAnimationFrame(()=>shade.classList.add("open"));document.body.classList.add("filter-sheet-open")}
+    else if(shade){shade.classList.remove("open");setTimeout(()=>shade.remove(),180);document.body.classList.remove("filter-sheet-open")}
+  };
+  btn.addEventListener("click", () => setOpen(!panel.classList.contains("open")));
+  qs(".filter-sheet-close",panel)?.addEventListener("click",()=>setOpen(false));
 }
 function currentGlobalSearchValue() { return ({ equipment: state.equipmentSearch, withdrawals: state.withdrawalsSearch, reservations: state.reservationsSearch, maintenance: state.maintenanceSearch, carts: state.cartSearch })[state.view] || ""; }
 function routeFromSearch(query) {
@@ -607,7 +681,7 @@ function openImportModal(){const m=makeModal(`<div class="panel-head"><div><span
 function showImportPreview(modal,rows){const valid=rows.filter(r=>!r.errors.length);const host=qs("#import-preview",modal);host.innerHTML=`<div class="import-preview"><table class="preview-table"><thead><tr><th>Linha</th><th>Código</th><th>Modelo</th><th>Nome</th><th>Estado</th><th>Validação</th></tr></thead><tbody>${rows.slice(0,200).map(r=>`<tr><td>${r.line}</td><td>${esc(r.code||"—")}</td><td>${esc(r.model||"—")}</td><td>${esc(r.label||"—")}</td><td>${esc(statusLabel(r.status))}</td><td class="${r.errors.length?"preview-error":""}">${esc(r.errors.join("; ")||"OK")}</td></tr>`).join("")}</tbody></table></div><div class="modal-actions"><span class="muted">${valid.length} válido(s) de ${rows.length}</span><button class="button primary" id="confirm-import" ${valid.length?"":"disabled"}>Importar válidos</button></div>`;qs("#confirm-import",modal)?.addEventListener("click",()=>performImport(modal,valid));}
 async function performImport(modal,rows){const b=qs("#confirm-import",modal);setBusy(b,true,"Importando…");let inserted=0,skipped=0;try{for(let i=0;i<rows.length;i+=100){const chunk=rows.slice(i,i+100);const codes=chunk.map(r=>r.code);const {data:existing,error:e1}=await supabase.from("equipments").select("code").in("code",codes);if(e1)throw e1;const set=new Set((existing||[]).map(x=>x.code.toLowerCase()));const payload=chunk.filter(r=>!set.has(r.code.toLowerCase())).map(({line,errors,...r})=>({...r,created_by:state.profile.id}));skipped+=chunk.length-payload.length;if(payload.length){const {error}=await supabase.from("equipments").insert(payload);if(error)throw error;inserted+=payload.length}}notify(`${inserted} equipamento(s) importado(s)${skipped?` · ${skipped} duplicado(s) ignorado(s)`:""}.`,"success");modal.remove();renderEquipment()}catch(error){notify(errText(error),"error")}finally{setBusy(b,false)}}
 async function fetchAllEquipments(limit=10000){const all=[];for(let from=0;from<limit;from+=500){const {data,error}=await supabase.from("equipments").select("code,asset_tag,brand,model,label,status,is_active,qr_token,created_at,updated_at").order("code").range(from,from+499);if(error)throw error;all.push(...(data||[]));if((data||[]).length<500)break}return all}
-async function exportEquipments(){try{await ensureXLSXLib();const rows=await fetchAllEquipments();const sheet=window.XLSX.utils.json_to_sheet(rows.map(x=>({Numero:x.code,Patrimonio:x.asset_tag||"",Marca:x.brand,Modelo:x.model,Nome:x.label||"",Estado:statusLabel(x.status),Ativo:x.is_active?"Sim":"Não",QR:x.qr_token,Criado:x.created_at,Atualizado:x.updated_at})));const wb=window.XLSX.utils.book_new();window.XLSX.utils.book_append_sheet(wb,sheet,"Equipamentos");window.XLSX.writeFile(wb,`Dasein-equipamentos-${new Date().toISOString().slice(0,10)}.xlsx`)}catch(error){notify(errText(error),"error")}}
+async function exportEquipments(){try{await ensureXLSXLib();const rows=await fetchAllEquipments();const sheet=window.XLSX.utils.json_to_sheet(rows.map(x=>({Numero:x.code,Patrimonio:x.asset_tag||"",Marca:x.brand,Modelo:x.model,Nome:x.label||"",Estado:statusLabel(x.status),Ativo:x.is_active?"Sim":"Não",QR:x.qr_token,Criado:x.created_at,Atualizado:x.updated_at})));const wb=window.XLSX.utils.book_new();window.XLSX.utils.book_append_sheet(wb,sheet,"Equipamentos");window.XLSX.writeFile(wb,`Equipa-equipamentos-${new Date().toISOString().slice(0,10)}.xlsx`)}catch(error){notify(errText(error),"error")}}
 async function printQrBatch(){try{await ensureQRCodeLib();const {data,error}=await supabase.from("equipments").select("code,label,brand,model,qr_token").eq("is_active",true).order("code").limit(200);if(error)throw error;const m=makeModal(`<div class="printable"><div class="panel-head"><div><span class="eyebrow">Impressão</span><h2>QR Codes · ${data.length} equipamento(s)</h2></div><button class="icon-button" data-close>×</button></div><div class="modal-body"><div id="qr-batch" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px"></div><div class="modal-actions"><button class="button primary" id="print-batch">Imprimir</button></div></div></div>`,true);const h=qs("#qr-batch",m);data.forEach((e,i)=>{const card=document.createElement("div");card.style.cssText="border:1px solid #ddd;border-radius:10px;padding:12px;text-align:center;break-inside:avoid";card.innerHTML=`<div id="qrb-${i}" style="display:grid;place-items:center"></div><strong style="display:block;margin-top:8px">${esc(e.label||e.code)}</strong><small>${esc(e.code)} · ${esc(e.model)}</small>`;h.append(card);new window.QRCode(qs(`#qrb-${i}`,card),{text:qrUrl(e.qr_token),width:112,height:112,correctLevel:window.QRCode.CorrectLevel.M})});qs("#print-batch",m).addEventListener("click",()=>window.print());if(data.length===200)notify("A impressão em lote foi limitada aos primeiros 200 equipamentos para proteger o navegador.","warning")}catch(error){notify(errText(error),"error")}}
 
 function parseQrToken(raw = "") {
@@ -622,7 +696,7 @@ function parseQrToken(raw = "") {
 }
 async function openScannedToken(token) {
   const scan = await scanPublic(token);
-  if (!scan) return notify("QR inválido, inativo ou não reconhecido pelo Dasein.", "error");
+  if (!scan) return notify("QR inválido, inativo ou não reconhecido pelo Equipa.", "error");
   if (scan.kind === "cart") {
     state.view = "carts";
     await renderCarts();
@@ -641,7 +715,7 @@ async function openMobileQrScanner() {
   if (!navigator.mediaDevices?.getUserMedia) return notify("Este navegador não oferece acesso à câmera para leitura de QR.", "error");
   const back = document.createElement("div");
   back.className = "modal-backdrop scanner-backdrop";
-  back.innerHTML = `<section class="mobile-scanner" role="dialog" aria-modal="true"><header class="scanner-head"><div><span class="eyebrow">Leitor Dasein</span><h2>Aponte para o QR Code</h2></div><button class="scanner-close" type="button" aria-label="Fechar">×</button></header><div class="scanner-stage"><video class="scanner-video" autoplay muted playsinline></video><canvas class="scanner-canvas" aria-hidden="true"></canvas><div class="scanner-frame"><i></i><i></i><i></i><i></i></div><div class="scanner-line"></div></div><p class="scanner-help">Mantenha o código dentro da área marcada. A leitura acontece automaticamente.</p></section>`;
+  back.innerHTML = `<section class="mobile-scanner" role="dialog" aria-modal="true"><header class="scanner-head"><div><span class="eyebrow">Leitor Equipa</span><h2>Aponte para o QR Code</h2></div><button class="scanner-close" type="button" aria-label="Fechar">×</button></header><div class="scanner-stage"><video class="scanner-video" autoplay muted playsinline></video><canvas class="scanner-canvas" aria-hidden="true"></canvas><div class="scanner-frame"><i></i><i></i><i></i><i></i></div><div class="scanner-line"></div></div><p class="scanner-help">Mantenha o código dentro da área marcada. A leitura acontece automaticamente.</p></section>`;
   document.body.append(back);
   const video = qs(".scanner-video", back);
   const canvas = qs(".scanner-canvas", back);
@@ -691,7 +765,7 @@ async function openMobileQrScanner() {
 }
 
 async function handleScanAfterLogin(){const token=scanTokenFromUrl();if(!token)return false;const scan=await scanPublic(token);if(!scan){notify("QR inválido ou inativo.","error");return false}state.pendingScan=scan;if(scan.kind==="cart"){state.view="carts";await renderCarts();await openCart(token);return true}const {data,error}=await supabase.from("equipments").select("id").eq("qr_token",token).maybeSingle();if(error||!data)return false;state.view="equipment";await renderEquipment();await openEquipment(data.id);return true}
-async function initSession(session){state.session=session;try{await loadProfile()}catch(error){notify("Sua conta existe, mas o perfil escolar ainda não foi criado.","error");await supabase.auth.signOut();return}if(!(await handleScanAfterLogin()))await renderDashboard()}
+async function initSession(session){state.session=session;try{await loadProfile()}catch(error){notify("Sua conta existe, mas o perfil escolar ainda não foi criado.","error");await supabase.auth.signOut();return}if(!(await ensureLegalAcceptance()))return;if(!(await handleScanAfterLogin()))await renderDashboard()}
 async function boot(){const token=scanTokenFromUrl();const [{data:{session}},scan]=await Promise.all([supabase.auth.getSession(),scanPublic(token)]);if(session)await initSession(session);else renderAuth(scan);supabase.auth.onAuthStateChange(async(event,sessionNow)=>{if(event==="SIGNED_OUT"||!sessionNow){state.session=null;state.profile=null;renderAuth(await scanPublic(scanTokenFromUrl()));return}if(event==="SIGNED_IN"&&(!state.session||state.session.user.id!==sessionNow.user.id))await initSession(sessionNow)})}
 
-boot().catch(error=>{console.error(error);app.innerHTML=`<main class="boot"><div><strong>O Dasein encontrou um erro.</strong><span>${esc(errText(error))}</span></div></main>`});
+boot().catch(error=>{console.error(error);app.innerHTML=`<main class="boot boot-error"><div><strong>Não foi possível abrir o Equipa.</strong><span>${esc(errText(error))}</span></div></main>`});

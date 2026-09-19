@@ -1,6 +1,10 @@
-window.DASEIN_CONFIG = Object.freeze({
-  appName: "Dasein",
-  version: "0.0.10",
+window.EQUIPA_CONFIG = Object.freeze({
+  appName: "Equipa",
+  version: "0.0.12",
+  legalTermsVersion: "2026.09",
+  privacyVersion: "2026.09",
+  controllerName: "Unidade escolar responsável pelo Equipa",
+  privacyContact: "Canal oficial da escola",
   supabaseUrl: "https://oxcfbsrukzfnzkivatsn.supabase.co",
   supabasePublishableKey: "sb_publishable_gu7AVR7fbvPE_GQ4XIW2IQ_iTFAzyne",
   pageSize: 24,
