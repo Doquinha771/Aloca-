@@ -65,11 +65,29 @@ function errText(error) {
   return map[code] || raw.replace(/^.*ERROR:\s*/i, "");
 }
 function notify(message, type = "info") {
-  const el = document.createElement("div");
-  el.className = `toast ${type}`;
-  el.textContent = message;
-  qs("#toast-host").append(el);
-  setTimeout(() => el.remove(), 4500);
+  const host = qs("#toast-host");
+  if (!host) return;
+  const titles = { success: "Concluído", error: "Não foi possível concluir", warning: "Atenção", info: "Dasein" };
+  const marks = { success: "✓", error: "!", warning: "!", info: "i" };
+  const el = document.createElement("section");
+  el.className = `dasein-infobox ${type}`;
+  el.setAttribute("role", type === "error" ? "alert" : "status");
+  el.innerHTML = `<span class="infobox-mark" aria-hidden="true">${marks[type] || "i"}</span><div class="infobox-copy"><strong>${esc(titles[type] || "Dasein")}</strong><p>${esc(message)}</p></div><button class="infobox-close" type="button" aria-label="Fechar aviso">×</button><span class="infobox-timer" aria-hidden="true"></span>`;
+  host.prepend(el);
+  while (host.children.length > 4) host.lastElementChild?.remove();
+  const remove = () => { el.classList.add("leaving"); setTimeout(() => el.remove(), 190); };
+  qs(".infobox-close", el)?.addEventListener("click", remove);
+  setTimeout(remove, type === "error" ? 7000 : 5000);
+}
+function confirmAction({ title = "Confirmar ação", message, confirmText = "Confirmar", cancelText = "Voltar", danger = false } = {}) {
+  return new Promise(resolve => {
+    const modal = makeModal(`<div class="confirm-box"><span class="confirm-symbol ${danger ? "danger" : ""}">${danger ? "!" : "?"}</span><div><span class="eyebrow">Dasein</span><h2>${esc(title)}</h2><p>${esc(message || "Confirme para continuar.")}</p></div></div><div class="modal-actions confirm-actions"><button class="button" type="button" data-confirm-no>${esc(cancelText)}</button><button class="button ${danger ? "danger-solid" : "primary"}" type="button" data-confirm-yes>${esc(confirmText)}</button></div>`);
+    let settled = false;
+    const finish = value => { if (settled) return; settled = true; modal.remove(); resolve(value); };
+    qs("[data-confirm-no]", modal)?.addEventListener("click", () => finish(false));
+    qs("[data-confirm-yes]", modal)?.addEventListener("click", () => finish(true));
+    modal.addEventListener("click", e => { if (e.target === modal) finish(false); });
+  });
 }
 function setBusy(button, busy, text = "Aguarde…") {
   if (!button) return;
@@ -245,8 +263,8 @@ async function navigate(view) {
 function metric(label, value, view) { return `<button class="metric" type="button" data-go="${view}"><span>${esc(label)}</span><strong>${Number(value || 0).toLocaleString("pt-BR")}</strong><small>Abrir detalhes</small></button>`; }
 
 async function renderDashboard() {
-  state.view = "dashboard"; shell(`<div class="loading">Carregando indicadores…</div>`);
-  const admin = state.profile.role === "admin";
+  state.view = "dashboard";
+  shell(`<div class="loading">Carregando indicadores…</div>`);
   const base = [
     supabase.from("equipments").select("id", { count: "exact", head: true }).eq("is_active", true),
     supabase.from("equipments").select("id", { count: "exact", head: true }).eq("is_active", true).eq("status", "available"),
@@ -256,59 +274,27 @@ async function renderDashboard() {
   ];
   const [total, available, inUse, maintenance, reservations] = (await Promise.all(base)).map(x => x.count || 0);
   const { data: current } = await supabase.rpc("home_withdrawals", { p_query: null });
-  const { data: recent } = await supabase.from("equipments").select("id,code,asset_tag,brand,model,label,status,is_active,updated_at,qr_token").order("updated_at", { ascending: false }).limit(5);
-  const baseTotal = Math.max(total, 1);
-  const pAvailable = Math.max(0, Math.min(100, available / baseTotal * 100));
-  const pUse = Math.max(0, Math.min(100 - pAvailable, inUse / baseTotal * 100));
-  const pMaintenance = Math.max(0, Math.min(100 - pAvailable - pUse, maintenance / baseTotal * 100));
-  const e1 = pAvailable;
-  const e2 = pAvailable + pUse;
-  const e3 = pAvailable + pUse + pMaintenance;
-  const donut = `conic-gradient(var(--purple) 0 ${e1.toFixed(2)}%, var(--ink) ${e1.toFixed(2)}% ${e2.toFixed(2)}%, var(--red) ${e2.toFixed(2)}% ${e3.toFixed(2)}%, var(--surface-3) ${e3.toFixed(2)}% 100%)`;
-  const recentList = (recent || []).map(e => `<button class="summary-item" type="button" data-equipment="${esc(e.id)}"><span class="summary-icon">${icon("equipment")}</span><span class="summary-copy"><strong>${esc(e.label || e.code)}</strong><small>${esc(e.brand)} ${esc(e.model)} · ${esc(statusLabel(e.status))}</small></span><span class="summary-code">${esc(e.asset_tag || e.code)}</span></button>`).join("") || `<div class="empty compact"><strong>Nenhum equipamento.</strong><span>Cadastre o primeiro equipamento para começar.</span></div>`;
+  const pendingReturns = (current || []).reduce((sum, row) => sum + Number(row.pending_count || 0), 0);
+  const availabilityRate = total ? Math.round((available / total) * 100) : 0;
+  const useRate = total ? Math.round((inUse / total) * 100) : 0;
 
-  shell(`<div class="desktop-dashboard">
-    <section class="dashboard-primary">
-      <div class="section-title-line"><div><span class="eyebrow">Operação escolar</span><h2>Indicadores</h2></div><button class="text-action" data-open="equipment">Ver todos</button></div>
-      <div class="hero-cards">
-        <button class="hero-card hero-card-dark" type="button" data-go="equipment">
-          <span class="hero-card-top"><span>Inventário ativo</span><b>•••</b></span>
-          <strong>${Number(total).toLocaleString("pt-BR")}</strong>
-          <span class="hero-card-bottom"><span>Equipamentos cadastrados</span><span class="hero-card-mark">DASEIN</span></span>
-        </button>
-        <button class="hero-card hero-card-light" type="button" data-go="equipment">
-          <span class="hero-card-top"><span>Disponíveis agora</span><b>•••</b></span>
-          <strong>${Number(available).toLocaleString("pt-BR")}</strong>
-          <span class="hero-card-bottom"><span>${total ? Math.round(available / total * 100) : 0}% do inventário</span><span class="dual-dot"><i></i><i></i></span></span>
-        </button>
-      </div>
-      <div class="quick-actions dashboard-actions">
-        <button type="button" class="quick-action primary-action" data-go="equipment"><span>${icon("equipment")}</span><b>Equipamentos</b></button>
-        <button type="button" class="quick-action" data-go="withdrawals"><span>${icon("withdrawals")}</span><b>Retiradas</b></button>
-        <button type="button" class="quick-action" data-go="reservations"><span>${icon("reservations")}</span><b>Reservas</b></button>
-        <button type="button" class="quick-action" data-go="carts"><span>${icon("qr")}</span><b>QR / Carrinhos</b></button>
-      </div>
-      <section class="dashboard-activity">
-        <div class="section-title-line activity-title"><div><span class="eyebrow">Movimentação</span><h2>Retiradas recentes</h2></div><button class="text-action" data-open="withdrawals">Ver todas</button></div>
-        <div class="activity-table">${renderWithdrawalRows((current || []).slice(0,6))}</div>
-      </section>
-    </section>
-    <aside class="summary-panel">
-      <div class="summary-head"><div><span class="eyebrow">Situação atual</span><h2>Resumo</h2></div><span class="summary-period">Hoje</span></div>
-      <div class="donut-wrap"><div class="donut" style="background:${donut}"><div class="donut-core"><span>Total</span><strong>${Number(total).toLocaleString("pt-BR")}</strong><small>equipamentos</small></div></div></div>
-      <div class="legend-grid">
-        <button data-go="equipment"><i class="dot purple"></i><span>Disponíveis</span><strong>${available}</strong></button>
-        <button data-go="withdrawals"><i class="dot black"></i><span>Em uso</span><strong>${inUse}</strong></button>
-        <button data-go="${admin ? "maintenance" : "equipment"}"><i class="dot red"></i><span>Manutenção</span><strong>${maintenance}</strong></button>
-        <button data-go="reservations"><i class="dot outline"></i><span>Reservas</span><strong>${reservations}</strong></button>
-      </div>
-      <div class="summary-divider"></div>
-      <div class="summary-subhead"><strong>Atualizados recentemente</strong><button data-open="equipment">Ver tudo</button></div>
-      <div class="summary-list">${recentList}</div>
-    </aside>
-  </div>`);
-  qsa("[data-go],[data-open]").forEach(b => b.addEventListener("click", () => navigate(b.dataset.go || b.dataset.open)));
-  bindEquipmentRowClicks();
+  const indicator = ({ cls, label, value, note, view, iconName }) => `<button class="indicator-balloon ${cls}" type="button" data-go="${view}"><span class="indicator-top"><span class="indicator-icon">${icon(iconName)}</span><span class="indicator-arrow">↗</span></span><span class="indicator-label">${esc(label)}</span><strong>${Number(value || 0).toLocaleString("pt-BR")}</strong><span class="indicator-note">${esc(note)}</span></button>`;
+
+  shell(`<section class="indicator-dashboard">
+    <header class="indicator-dashboard-head">
+      <div><span class="eyebrow">Operação escolar</span><h1>Visão geral</h1><p>Os indicadores são a própria dashboard. Toque em qualquer bloco para abrir os detalhes.</p></div>
+      <span class="dashboard-live"><i></i> Dados atuais</span>
+    </header>
+    <div class="indicator-cloud">
+      ${indicator({ cls:"indicator-total", label:"Inventário ativo", value:total, note:"Todos os equipamentos ativos da escola", view:"equipment", iconName:"equipment" })}
+      ${indicator({ cls:"indicator-available", label:"Disponíveis agora", value:available, note:`${availabilityRate}% do inventário pronto para uso`, view:"equipment", iconName:"dashboard" })}
+      ${indicator({ cls:"indicator-use", label:"Em uso", value:inUse, note:`${useRate}% do inventário em retirada`, view:"withdrawals", iconName:"withdrawals" })}
+      ${indicator({ cls:"indicator-maintenance", label:"Em manutenção", value:maintenance, note:"Equipamentos temporariamente fora de operação", view:state.profile.role === "admin" ? "maintenance" : "equipment", iconName:"maintenance" })}
+      ${indicator({ cls:"indicator-reservations", label:"Reservas ativas", value:reservations, note:"Reservas futuras confirmadas", view:"reservations", iconName:"reservations" })}
+      ${indicator({ cls:"indicator-pending", label:"Devoluções pendentes", value:pendingReturns, note:"Itens em retiradas ainda abertas", view:"withdrawals", iconName:"history" })}
+    </div>
+  </section>`);
+  qsa("[data-go]").forEach(b => b.addEventListener("click", () => navigate(b.dataset.go)));
 }
 
 function equipmentRows(rows) {
@@ -375,7 +361,7 @@ async function renderReservations() {
   state.view="reservations"; shell(`<section class="panel"><div class="panel-head"><div><span class="eyebrow">Agenda</span><h2>Reservas futuras</h2></div></div><div id="reservations"><div class="loading">Carregando reservas…</div></div></section>`);
   const {data,error}=await supabase.from("reservations").select("id,equipment_id,user_id,class_name,destination,start_at,end_at,notes,status,withdrawal_id,created_at,equipments(code,label,brand,model,status)").order("start_at",{ascending:true}).limit(300);const h=qs("#reservations");if(error){h.innerHTML=`<div class="empty"><strong>Erro ao carregar.</strong><span>${esc(errText(error))}</span></div>`;return}if(!data?.length){h.innerHTML=`<div class="empty"><strong>Nenhuma reserva.</strong><span>Abra um equipamento disponível e escolha Reservar.</span></div>`;return}
   h.innerHTML=`<div class="data-list">${data.map(r=>{const expired=r.status==="confirmed"&&new Date(r.end_at)<new Date();const st=expired?"expired":r.status;return `<div class="data-row"><div class="data-main"><strong>${esc(r.equipments?.label||r.equipments?.code||"Equipamento")}</strong><span>${esc(r.class_name)} · ${esc(r.destination)} · ${esc(dt(r.start_at))} até ${esc(dt(r.end_at))}</span></div><span class="status status-${esc(st)}">${esc(statusLabel(st))}</span><div class="row-actions">${r.status==="confirmed"&&!expired?`<button class="button small" data-cancel-res="${r.id}">Cancelar</button><button class="button primary small" data-use-res="${r.id}">Retirar</button>`:""}</div></div>`}).join("")}</div>`;
-  qsa("[data-cancel-res]").forEach(b=>b.addEventListener("click",async()=>{setBusy(b,true,"…");const {error}=await supabase.rpc("cancel_reservation",{p_reservation_id:Number(b.dataset.cancelRes)});setBusy(b,false);if(error)return notify(errText(error),"error");notify("Reserva cancelada.","success");renderReservations()}));
+  qsa("[data-cancel-res]").forEach(b=>b.addEventListener("click",async()=>{const ok=await confirmAction({title:"Cancelar reserva?",message:"O horário ficará disponível novamente para este equipamento.",confirmText:"Cancelar reserva",danger:true});if(!ok)return;setBusy(b,true,"…");const {error}=await supabase.rpc("cancel_reservation",{p_reservation_id:Number(b.dataset.cancelRes)});setBusy(b,false);if(error)return notify(errText(error),"error");notify("Reserva cancelada.","success");renderReservations()}));
   qsa("[data-use-res]").forEach(b=>b.addEventListener("click",async()=>{setBusy(b,true,"Retirando…");const {error}=await supabase.rpc("checkout_reservation",{p_reservation_id:Number(b.dataset.useRes),p_client_action_id:uid()});setBusy(b,false);if(error)return notify(errText(error),"error");notify("Reserva convertida em retirada.","success");navigate("withdrawals")}));
 }
 
