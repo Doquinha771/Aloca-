@@ -174,23 +174,63 @@ async function loadProfile() {
 function pageTitle() {
   return ({ dashboard: "Visão geral", equipment: "Equipamentos", withdrawals: "Retiradas", reservations: "Reservas", history: "Histórico", carts: "Carrinhos", maintenance: "Manutenção", admin: "Administração" })[state.view] || "Dasein";
 }
+function firstName() { return (state.profile?.full_name || "Usuário").trim().split(/\s+/)[0] || "Usuário"; }
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 12) return "Bom dia";
+  if (h < 18) return "Boa tarde";
+  return "Boa noite";
+}
+function icon(name) {
+  const paths = {
+    dashboard: '<rect x="4" y="4" width="6" height="6" rx="1.4"/><rect x="14" y="4" width="6" height="6" rx="1.4"/><rect x="4" y="14" width="6" height="6" rx="1.4"/><rect x="14" y="14" width="6" height="6" rx="1.4"/>',
+    equipment: '<rect x="3.5" y="5" width="17" height="12" rx="2"/><path d="M8 20h8M12 17v3"/>',
+    withdrawals: '<path d="M5 7h13M15 4l3 3-3 3M19 17H6M9 14l-3 3 3 3"/>',
+    reservations: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16M8 14h3M13 14h3"/>',
+    history: '<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/>',
+    carts: '<path d="M4 5h2l2 10h9l2-7H7M10 19a1 1 0 1 0 0 .01M17 19a1 1 0 1 0 0 .01"/>',
+    maintenance: '<path d="M14.5 6.5a4 4 0 0 0-5 5L4 17l3 3 5.5-5.5a4 4 0 0 0 5-5l-3 3-3-3 3-3z"/>',
+    admin: '<circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.12-1.28l2.02-1.57-2-3.46-2.48 1a7 7 0 0 0-2.22-1.29L13.82 3h-4l-.38 2.4a7 7 0 0 0-2.22 1.29l-2.48-1-2 3.46 2.02 1.57A7 7 0 0 0 4.64 12c0 .44.04.87.12 1.28l-2.02 1.57 2 3.46 2.48-1a7 7 0 0 0 2.22 1.29l.38 2.4h4l.38-2.4a7 7 0 0 0 2.22-1.29l2.48 1 2-3.46-2.02-1.57c.08-.41.12-.84.12-1.28z"/>',
+    logout: '<path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4M14 8l4 4-4 4M18 12H9"/>',
+    search: '<circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/>',
+    user: '<circle cx="12" cy="8" r="3.2"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/>',
+    qr: '<rect x="4" y="4" width="6" height="6"/><rect x="14" y="4" width="6" height="6"/><rect x="4" y="14" width="6" height="6"/><path d="M14 14h2v2h-2zM18 14h2v4h-2zM14 18h4v2h-4z"/>'
+  };
+  return `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths[name] || paths.dashboard}</svg>`;
+}
 function shell(content) {
   const admin = state.profile?.role === "admin";
   app.innerHTML = `<div class="app-shell">
     <aside class="sidebar" id="sidebar">
-      <div class="sidebar-brand"><div class="brandmark small">D</div><div><strong>Dasein</strong><span>${esc(config.version)}</span></div></div>
-      <nav class="nav">
-        ${nav("dashboard","Visão geral")}${nav("equipment","Equipamentos")}${nav("withdrawals","Retiradas")}${nav("reservations","Reservas")}${nav("history","Histórico")}${nav("carts","Carrinhos")}${admin ? nav("maintenance","Manutenção") + nav("admin","Administração") : ""}
+      <div class="sidebar-brand" title="Dasein"><div class="brandmark small">D</div><div class="brand-copy"><strong>Dasein</strong><span>${esc(config.version)}</span></div></div>
+      <nav class="nav" aria-label="Navegação principal">
+        ${nav("dashboard","Visão geral","dashboard")}${nav("equipment","Equipamentos","equipment")}${nav("withdrawals","Retiradas","withdrawals")}${nav("reservations","Reservas","reservations")}${nav("history","Histórico","history")}${nav("carts","Carrinhos","carts")}${admin ? nav("maintenance","Manutenção","maintenance") + nav("admin","Administração","admin") : ""}
       </nav>
-      <div class="sidebar-user"><div><strong>${esc(state.profile?.full_name)}</strong><span>${esc(roleLabel(state.profile?.role))}</span></div><button class="icon-button" id="logout" title="Sair">↪</button></div>
+      <div class="sidebar-user"><div class="sidebar-user-copy"><strong>${esc(state.profile?.full_name)}</strong><span>${esc(roleLabel(state.profile?.role))}</span></div><button class="nav-icon logout-button" id="logout" title="Sair" aria-label="Sair">${icon("logout")}</button></div>
     </aside>
-    <section class="main"><header class="topbar"><div class="topbar-left"><button class="icon-button menu-toggle" id="menu">☰</button><div><span class="eyebrow">Dasein</span><h1>${esc(pageTitle())}</h1></div></div><span class="role-chip">${esc(roleLabel(state.profile?.role))}</span></header><main class="content">${content}</main></section>
+    <section class="main">
+      <header class="topbar">
+        <div class="topbar-greeting"><button class="nav-icon menu-toggle" id="menu" aria-label="Abrir menu">☰</button><div><strong>${esc(greeting())}, ${esc(firstName())}</strong><span>${esc(pageTitle())} · ${esc(roleLabel(state.profile?.role))}</span></div></div>
+        <form class="global-search" id="global-search-form" role="search"><span>${icon("search")}</span><input id="global-search" type="search" placeholder="Pesquisar equipamentos" autocomplete="off"></form>
+        <button class="account-chip" id="account-chip" type="button"><span class="account-avatar">${icon("user")}</span><span><strong>Minha conta</strong><small>${esc(roleLabel(state.profile?.role))}</small></span><b>⌄</b></button>
+      </header>
+      <main class="content view-${esc(state.view)}">${content}</main>
+    </section>
   </div>`;
   qsa("[data-view]").forEach(b => b.addEventListener("click", () => navigate(b.dataset.view)));
   qs("#menu")?.addEventListener("click", () => qs("#sidebar")?.classList.toggle("open"));
   qs("#logout")?.addEventListener("click", () => supabase.auth.signOut());
+  qs("#account-chip")?.addEventListener("click", () => navigate(admin ? "admin" : "dashboard"));
+  qs("#global-search-form")?.addEventListener("submit", e => {
+    e.preventDefault();
+    const term = qs("#global-search")?.value.trim() || "";
+    if (!term) return;
+    state.equipmentSearch = term;
+    state.equipmentPage = 0;
+    navigate("equipment");
+  });
 }
-function nav(view, label) { return `<button type="button" class="nav-button ${state.view === view ? "active" : ""}" data-view="${view}">${label}</button>`; }
+function nav(view, label, iconName) { return `<button type="button" class="nav-button ${state.view === view ? "active" : ""}" data-view="${view}" title="${esc(label)}" aria-label="${esc(label)}"><span class="nav-symbol">${icon(iconName)}</span><span class="nav-label">${esc(label)}</span></button>`; }
 async function navigate(view) {
   state.view = view; qs("#sidebar")?.classList.remove("open");
   if (view === "equipment") return renderEquipment();
@@ -216,10 +256,57 @@ async function renderDashboard() {
   ];
   const [total, available, inUse, maintenance, reservations] = (await Promise.all(base)).map(x => x.count || 0);
   const { data: current } = await supabase.rpc("home_withdrawals", { p_query: null });
-  const { data: recent } = await supabase.from("equipments").select("id,code,asset_tag,brand,model,label,status,is_active,updated_at,qr_token").order("updated_at", { ascending: false }).limit(6);
-  shell(`<section class="metrics">${metric("Equipamentos",total,"equipment")}${metric("Disponíveis",available,"equipment")}${metric("Em uso",inUse,"withdrawals")}${metric("Manutenção",maintenance,admin?"maintenance":"equipment")}${metric("Reservas",reservations,"reservations")}</section>
-    <div class="split"><section class="panel"><div class="panel-head"><div><span class="eyebrow">Operação</span><h2>Retiradas em destaque</h2></div><button class="button ghost small" data-open="withdrawals">Ver todas</button></div>${renderWithdrawalRows((current||[]).slice(0,6))}</section>
-    <section class="panel"><div class="panel-head"><div><span class="eyebrow">Inventário</span><h2>Atualizados recentemente</h2></div></div>${equipmentRows(recent||[])}</section></div>`);
+  const { data: recent } = await supabase.from("equipments").select("id,code,asset_tag,brand,model,label,status,is_active,updated_at,qr_token").order("updated_at", { ascending: false }).limit(5);
+  const baseTotal = Math.max(total, 1);
+  const pAvailable = Math.max(0, Math.min(100, available / baseTotal * 100));
+  const pUse = Math.max(0, Math.min(100 - pAvailable, inUse / baseTotal * 100));
+  const pMaintenance = Math.max(0, Math.min(100 - pAvailable - pUse, maintenance / baseTotal * 100));
+  const e1 = pAvailable;
+  const e2 = pAvailable + pUse;
+  const e3 = pAvailable + pUse + pMaintenance;
+  const donut = `conic-gradient(var(--purple) 0 ${e1.toFixed(2)}%, var(--ink) ${e1.toFixed(2)}% ${e2.toFixed(2)}%, var(--red) ${e2.toFixed(2)}% ${e3.toFixed(2)}%, var(--surface-3) ${e3.toFixed(2)}% 100%)`;
+  const recentList = (recent || []).map(e => `<button class="summary-item" type="button" data-equipment="${esc(e.id)}"><span class="summary-icon">${icon("equipment")}</span><span class="summary-copy"><strong>${esc(e.label || e.code)}</strong><small>${esc(e.brand)} ${esc(e.model)} · ${esc(statusLabel(e.status))}</small></span><span class="summary-code">${esc(e.asset_tag || e.code)}</span></button>`).join("") || `<div class="empty compact"><strong>Nenhum equipamento.</strong><span>Cadastre o primeiro equipamento para começar.</span></div>`;
+
+  shell(`<div class="desktop-dashboard">
+    <section class="dashboard-primary">
+      <div class="section-title-line"><div><span class="eyebrow">Operação escolar</span><h2>Indicadores</h2></div><button class="text-action" data-open="equipment">Ver todos</button></div>
+      <div class="hero-cards">
+        <button class="hero-card hero-card-dark" type="button" data-go="equipment">
+          <span class="hero-card-top"><span>Inventário ativo</span><b>•••</b></span>
+          <strong>${Number(total).toLocaleString("pt-BR")}</strong>
+          <span class="hero-card-bottom"><span>Equipamentos cadastrados</span><span class="hero-card-mark">DASEIN</span></span>
+        </button>
+        <button class="hero-card hero-card-light" type="button" data-go="equipment">
+          <span class="hero-card-top"><span>Disponíveis agora</span><b>•••</b></span>
+          <strong>${Number(available).toLocaleString("pt-BR")}</strong>
+          <span class="hero-card-bottom"><span>${total ? Math.round(available / total * 100) : 0}% do inventário</span><span class="dual-dot"><i></i><i></i></span></span>
+        </button>
+      </div>
+      <div class="quick-actions dashboard-actions">
+        <button type="button" class="quick-action primary-action" data-go="equipment"><span>${icon("equipment")}</span><b>Equipamentos</b></button>
+        <button type="button" class="quick-action" data-go="withdrawals"><span>${icon("withdrawals")}</span><b>Retiradas</b></button>
+        <button type="button" class="quick-action" data-go="reservations"><span>${icon("reservations")}</span><b>Reservas</b></button>
+        <button type="button" class="quick-action" data-go="carts"><span>${icon("qr")}</span><b>QR / Carrinhos</b></button>
+      </div>
+      <section class="dashboard-activity">
+        <div class="section-title-line activity-title"><div><span class="eyebrow">Movimentação</span><h2>Retiradas recentes</h2></div><button class="text-action" data-open="withdrawals">Ver todas</button></div>
+        <div class="activity-table">${renderWithdrawalRows((current || []).slice(0,6))}</div>
+      </section>
+    </section>
+    <aside class="summary-panel">
+      <div class="summary-head"><div><span class="eyebrow">Situação atual</span><h2>Resumo</h2></div><span class="summary-period">Hoje</span></div>
+      <div class="donut-wrap"><div class="donut" style="background:${donut}"><div class="donut-core"><span>Total</span><strong>${Number(total).toLocaleString("pt-BR")}</strong><small>equipamentos</small></div></div></div>
+      <div class="legend-grid">
+        <button data-go="equipment"><i class="dot purple"></i><span>Disponíveis</span><strong>${available}</strong></button>
+        <button data-go="withdrawals"><i class="dot black"></i><span>Em uso</span><strong>${inUse}</strong></button>
+        <button data-go="${admin ? "maintenance" : "equipment"}"><i class="dot red"></i><span>Manutenção</span><strong>${maintenance}</strong></button>
+        <button data-go="reservations"><i class="dot outline"></i><span>Reservas</span><strong>${reservations}</strong></button>
+      </div>
+      <div class="summary-divider"></div>
+      <div class="summary-subhead"><strong>Atualizados recentemente</strong><button data-open="equipment">Ver tudo</button></div>
+      <div class="summary-list">${recentList}</div>
+    </aside>
+  </div>`);
   qsa("[data-go],[data-open]").forEach(b => b.addEventListener("click", () => navigate(b.dataset.go || b.dataset.open)));
   bindEquipmentRowClicks();
 }

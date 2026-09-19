@@ -14,4 +14,6 @@ A migration `supabase/migrations/20260918_dasein_web_bridge_0_0_2.sql` já foi a
 
 ## Versão
 
-0.0.2 — Web Parity
+0.0.3 — Desktop Institutional Redesign
+
+Interface desktop redesenhada em branco, roxo, vermelho e preto, mantendo a mesma integração Supabase da 0.0.2.
