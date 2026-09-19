@@ -898,6 +898,7 @@ async function initSession(session) {
   if (accessError) throw accessError;
   if (allowed !== true) { renderPendingApproval(); return; }
 
+  window.__equipaBootReady?.();
   const legalAccepted = await ensureLegalAcceptance();
   if (!legalAccepted) return;
 
