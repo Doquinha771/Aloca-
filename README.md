@@ -2,130 +2,101 @@
 
 # Equipa
 
-**Gestão escolar de equipamentos, reservas, retiradas e manutenção em uma plataforma web leve.**
+**Gestão responsável de equipamentos escolares.**
 
-![Version](https://img.shields.io/badge/version-0.0.12-5f6b76?style=for-the-badge)
-![Platform](https://img.shields.io/badge/platform-web-4f5b67?style=for-the-badge)
-![Frontend](https://img.shields.io/badge/frontend-GitHub%20Pages-333333?style=for-the-badge&logo=github)
-![Backend](https://img.shields.io/badge/backend-Supabase-3d4650?style=for-the-badge&logo=supabase&logoColor=white)
-![LGPD](https://img.shields.io/badge/privacy-LGPD-657484?style=for-the-badge)
+![Versão](https://img.shields.io/badge/vers%C3%A3o-0.0.13-5d666d?style=for-the-badge)
+![Plataforma](https://img.shields.io/badge/plataforma-web-69737a?style=for-the-badge)
+![Estado](https://img.shields.io/badge/estado-piloto%20escolar-78838a?style=for-the-badge)
+![Privacidade](https://img.shields.io/badge/privacidade-LGPD-626d74?style=for-the-badge)
 
 </div>
 
 ---
 
-O **Equipa** é uma plataforma para controle de equipamentos escolares. O projeto centraliza inventário, QR Codes, retiradas, devoluções, reservas, carrinhos, manutenção, histórico e administração sem depender de servidor local ou etapa de build.
+O **Equipa** é uma plataforma web criada para organizar o uso de equipamentos de uma unidade escolar. O sistema reúne inventário, QR Codes, carrinhos, retiradas, devoluções, reservas, manutenção, administração e auditoria em um único ambiente.
 
-A interface é publicada diretamente no **GitHub Pages** e utiliza **Supabase** para autenticação, banco de dados e regras de segurança.
+A proposta é permitir que a equipe escolar saiba **qual equipamento está disponível, quem realizou uma retirada, quando ocorreu a devolução e qual é o histórico do patrimônio**, mantendo rastreabilidade sem transformar a rotina em uma planilha interminável.
 
 ## Funções
 
 ```text
-Autenticação de usuários
-Perfis de aluno, professor e administrador
 Inventário de equipamentos
-Cadastro manual e importação por CSV/XLSX
-Pesquisa inteligente
-Filtros avançados
+Grupos e identificação por tipo de dispositivo
+Pesquisa inteligente e filtros
 QR Code permanente por equipamento
-Leitor de QR Code no celular
-Carrinhos de equipamentos por QR
-Retirada individual e em lote
-Devolução de equipamentos
-Reservas futuras com prevenção de conflito
-Histórico de movimentações
+QR Code por carrinho
+Leitura de QR pelo celular
+Download de QR Codes em lote
+Retirada individual
+Retirada seletiva por carrinho
+Devolução com data e horário
+Reservas futuras
+Histórico por equipamento, pessoa e turma
 Controle de manutenção
-Administração de usuários e cargos
-Exportação de inventário
-Monitoramento do uso do banco de dados
-Menus de contexto para edição e exclusão
-Termos de Uso e Política de Privacidade versionados
+Importação e exportação de inventário
+Aprovação e controle de acesso de usuários
+Banimento e restauração de acesso
+Auditoria administrativa
+Termos de Uso versionados
+Política de Privacidade versionada
 Registro de aceite dos documentos legais
-Row Level Security no Supabase
-Interface responsiva para desktop e mobile
+Interface adaptada para desktop e celular
 ```
 
-## Instalação
+## Equipamentos
 
-O Equipa não precisa de Node.js, npm ou servidor local.
-
-1. Extraia os arquivos do projeto.
-2. Envie o conteúdo da raiz para o repositório GitHub.
-3. Abra **Settings > Pages** no repositório.
-4. Configure a publicação usando a branch `main` e a pasta `/(root)`.
-5. Aguarde a publicação do GitHub Pages.
-
-A configuração do Supabase utilizada pelo frontend fica em:
+O Equipa foi preparado para o inventário utilizado pela escola, incluindo:
 
 ```text
-assets/js/config.js
+Chromebook
+Positivo novo
+Positivo técnico
+Positivo antigo
+ThinkPad Lenovo
+Tablet
+Outros equipamentos
 ```
 
-Somente a **publishable key** pode existir no frontend público. Chaves `service_role` ou `sb_secret` nunca devem ser adicionadas ao repositório.
+Cada equipamento pode possuir número/código, patrimônio, grupo, fabricante, modelo, nome, número de série, localização, estado e observações operacionais.
 
-## Estrutura
+## Carrinhos
+
+Os carrinhos representam conjuntos físicos de equipamentos. Cada carrinho pode registrar nome, número, localização, capacidade, observações e os equipamentos vinculados.
+
+Ao ler o QR de um carrinho, o usuário pode escolher **quais equipamentos serão retirados e quantos serão selecionados**, sem obrigar a retirada do lote inteiro.
+
+## Segurança e privacidade
+
+O Equipa adota autenticação individual, níveis de acesso, aprovação administrativa de novas contas, regras de acesso no banco de dados, auditoria e operações administrativas protegidas no servidor.
+
+A chave presente no navegador possui apenas permissões públicas controladas. Credenciais administrativas e segredos de servidor não fazem parte dos arquivos públicos do site.
+
+Os QR Codes funcionam como identificadores e não concedem, por si só, autorização para retirar ou alterar equipamentos. A execução de operações continua dependendo da conta autenticada e de suas permissões.
+
+O tratamento de dados foi pensado segundo princípios da LGPD, incluindo finalidade, necessidade, minimização, segurança, transparência, rastreabilidade e preservação dos direitos dos titulares.
+
+## Perfis
 
 ```text
-Equipa/
-├── index.html
-├── .nojekyll
-├── README.md
-├── assets/
-│   ├── css/
-│   │   └── style.css
-│   └── js/
-│       ├── app.js
-│       ├── config.js
-│       └── supabase.js
-└── supabase/
-    └── migrations/
+Aluno
+Professor
+Administrador
 ```
 
-## Privacidade e LGPD
+Contas novas podem permanecer aguardando aprovação antes de receber acesso ao inventário. A administração pode ajustar cargos, remover acesso, restaurar contas e aplicar bloqueios quando necessário à segurança ou à rotina escolar.
 
-O Equipa foi estruturado com minimização de dados e controle de acesso por função.
+## Auditoria
 
-Entre as medidas atuais estão:
-
-- autenticação individual;
-- Row Level Security nas tabelas expostas;
-- uso exclusivo de publishable key no navegador;
-- QR Codes sem dados pessoais embutidos;
-- ocultação de e-mails no painel administrativo;
-- coleta limitada ao necessário para operação escolar;
-- registro da versão aceita dos Termos de Uso e da Política de Privacidade;
-- retenção e arquivamento planejados para registros operacionais;
-- separação entre permissões de alunos, professores e administradores;
-- leitor de QR sem armazenamento das imagens capturadas pela câmera.
-
-A unidade escolar continua responsável por definir formalmente o controlador, o encarregado/canal de privacidade, os prazos institucionais de retenção e as bases legais aplicáveis a cada tratamento antes da adoção oficial.
-
-## Desenvolvimento
-
-O frontend utiliza HTML, CSS e JavaScript puro, sem compilação.
-
-```text
-Frontend     HTML + CSS + JavaScript
-Hospedagem   GitHub Pages
-Backend      Supabase
-Banco        PostgreSQL
-Auth         Supabase Auth
-Segurança    RLS + funções RPC controladas
-Importação   SheetJS carregado sob demanda
-QR           QRCodeJS e jsQR carregados sob demanda
-```
-
-Mudanças de banco ficam versionadas em `supabase/migrations`.
+A área de auditoria permite acompanhar eventos relevantes, como alterações no inventário, movimentações, reservas, manutenção, carrinhos, contas e aceites legais. O histórico administrativo é preservado para evitar que a exclusão de um cadastro elimine a rastreabilidade de ações anteriores.
 
 ## Estado do projeto
 
 ```text
 Nome        Equipa
-Versão      0.0.12
+Versão      0.0.13
 Plataforma  Web responsiva
-Frontend    GitHub Pages
-Backend     Supabase
-Estado      Em desenvolvimento / piloto escolar
+Uso         Gestão de equipamentos escolares
+Estado      Piloto / desenvolvimento
 ```
 
 ---
@@ -133,6 +104,6 @@ Estado      Em desenvolvimento / piloto escolar
 <div align="center">
 
 **Equipa**  
-Tecnologia simples para saber onde cada equipamento está e quem está usando.
+feito pela equipe da coordenação da escola e 3-A do ensino médio.
 
 </div>
