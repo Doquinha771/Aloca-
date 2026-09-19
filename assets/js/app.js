@@ -263,7 +263,9 @@ async function navigate(view) {
 function metric(label, value, view) { return `<button class="metric" type="button" data-go="${view}"><span>${esc(label)}</span><strong>${Number(value || 0).toLocaleString("pt-BR")}</strong><small>Abrir detalhes</small></button>`; }
 
 async function renderDashboard() {
-  state.view = "dashboard"; shell(`<div class="loading">Carregando indicadores…</div>`);
+  state.view = "dashboard";
+  shell(`<div class="loading">Carregando indicadores…</div>`);
+
   const admin = state.profile.role === "admin";
   const base = [
     supabase.from("equipments").select("id", { count: "exact", head: true }).eq("is_active", true),
@@ -276,49 +278,83 @@ async function renderDashboard() {
   const { data: current } = await supabase.rpc("home_withdrawals", { p_query: null });
   const pendingReturns = (current || []).reduce((sum, row) => sum + Number(row.pending_count || 0), 0);
 
-  shell(`<section class="dashboard-surface">
-    <div class="dashboard-primary">
-      <div class="section-title-line dashboard-heading">
-        <div><span class="eyebrow">Operação escolar</span><h2>Indicadores</h2></div>
-        <button class="text-action" data-open="equipment">Ver todos</button>
-      </div>
+  const safeTotal = Math.max(total, 1);
+  const availablePct = Math.round(available / safeTotal * 100);
+  const inUsePct = Math.round(inUse / safeTotal * 100);
+  const maintenancePct = Math.round(maintenance / safeTotal * 100);
 
-      <div class="hero-cards">
-        <button class="hero-card hero-card-dark" type="button" data-go="equipment">
-          <span class="hero-card-top"><span>Inventário ativo</span><b>•••</b></span>
-          <strong>${Number(total).toLocaleString("pt-BR")}</strong>
-          <span class="hero-card-bottom"><span>Equipamentos cadastrados</span><span class="hero-card-mark">DASEIN</span></span>
-        </button>
-        <button class="hero-card hero-card-light" type="button" data-go="equipment">
-          <span class="hero-card-top"><span>Disponíveis agora</span><b>•••</b></span>
-          <strong>${Number(available).toLocaleString("pt-BR")}</strong>
-          <span class="hero-card-bottom"><span>${total ? Math.round(available / total * 100) : 0}% do inventário</span><span class="dual-dot"><i></i><i></i></span></span>
-        </button>
+  shell(`<section class="bento-dashboard">
+    <header class="dashboard-intro">
+      <div>
+        <span class="eyebrow">Centro de operação</span>
+        <h1>Visão geral</h1>
+        <p>Acompanhe disponibilidade, movimentações e reservas sem disputar espaço com informação que não ajuda.</p>
       </div>
+      <button class="button dashboard-main-action" type="button" data-open="equipment">Abrir inventário ${icon("equipment")}</button>
+    </header>
 
-      <div class="dashboard-mini-stats" aria-label="Resumo operacional">
-        <button type="button" data-go="withdrawals"><span>Em uso</span><strong>${Number(inUse).toLocaleString("pt-BR")}</strong></button>
-        <button type="button" data-go="${admin ? "maintenance" : "equipment"}"><span>Manutenção</span><strong>${Number(maintenance).toLocaleString("pt-BR")}</strong></button>
-        <button type="button" data-go="reservations"><span>Reservas</span><strong>${Number(reservations).toLocaleString("pt-BR")}</strong></button>
-        <button type="button" data-go="withdrawals"><span>Devoluções pendentes</span><strong>${Number(pendingReturns).toLocaleString("pt-BR")}</strong></button>
-      </div>
+    <div class="bento-grid">
+      <button class="bento-card bento-inventory" type="button" data-go="equipment">
+        <div class="bento-card-head"><span class="bento-icon">${icon("equipment")}</span><span>Inventário ativo</span><i></i></div>
+        <div class="bento-number">${Number(total).toLocaleString("pt-BR")}</div>
+        <p>equipamentos disponíveis para a operação da escola</p>
+        <div class="inventory-distribution" aria-label="Distribuição do inventário">
+          <span class="dist-available" style="width:${availablePct}%"></span>
+          <span class="dist-use" style="width:${inUsePct}%"></span>
+          <span class="dist-maintenance" style="width:${maintenancePct}%"></span>
+        </div>
+        <div class="inventory-legend"><span><i class="available-dot"></i>${availablePct}% disponíveis</span><span>${Math.max(0,100-availablePct)}% em operação</span></div>
+      </button>
 
-      <div class="quick-actions dashboard-actions">
-        <button type="button" class="quick-action primary-action" data-go="equipment"><span>${icon("equipment")}</span><b>Equipamentos</b></button>
-        <button type="button" class="quick-action" data-go="withdrawals"><span>${icon("withdrawals")}</span><b>Retiradas</b></button>
-        <button type="button" class="quick-action" data-go="reservations"><span>${icon("reservations")}</span><b>Reservas</b></button>
-        <button type="button" class="quick-action" data-go="carts"><span>${icon("qr")}</span><b>QR / Carrinhos</b></button>
-      </div>
+      <button class="bento-card bento-available" type="button" data-go="equipment">
+        <div class="bento-card-head"><span>Disponíveis</span><i></i></div>
+        <div class="bento-number">${Number(available).toLocaleString("pt-BR")}</div>
+        <div class="bento-foot"><span>Prontos para uso</span><strong>${availablePct}%</strong></div>
+      </button>
 
-      <section class="dashboard-activity">
-        <div class="section-title-line activity-title"><div><span class="eyebrow">Movimentação</span><h2>Retiradas recentes</h2></div><button class="text-action" data-open="withdrawals">Ver todas</button></div>
+      <button class="bento-card bento-inuse" type="button" data-go="withdrawals">
+        <div class="bento-card-head"><span>Em uso</span><i></i></div>
+        <div class="bento-number">${Number(inUse).toLocaleString("pt-BR")}</div>
+        <div class="bento-foot"><span>Retirados agora</span><strong>${inUsePct}%</strong></div>
+      </button>
+
+      <button class="bento-card bento-maintenance" type="button" data-go="${admin ? "maintenance" : "equipment"}">
+        <div class="bento-card-head"><span>Manutenção</span><i></i></div>
+        <div class="bento-number">${Number(maintenance).toLocaleString("pt-BR")}</div>
+        <div class="bento-foot"><span>Exigem atenção</span><strong>${maintenancePct}%</strong></div>
+      </button>
+
+      <button class="bento-card bento-reservations" type="button" data-go="reservations">
+        <div class="bento-card-head"><span class="bento-icon purple">${icon("reservations")}</span><span>Reservas ativas</span><i></i></div>
+        <div class="bento-number">${Number(reservations).toLocaleString("pt-BR")}</div>
+        <p>agendamentos confirmados aguardando utilização</p>
+      </button>
+
+      <button class="bento-card bento-pending" type="button" data-go="withdrawals">
+        <div class="bento-card-head"><span class="bento-icon dark">${icon("withdrawals")}</span><span>Devoluções pendentes</span><i></i></div>
+        <div class="pending-layout"><div class="bento-number">${Number(pendingReturns).toLocaleString("pt-BR")}</div><span class="pending-badge">Agora</span></div>
+        <p>${pendingReturns ? "Equipamentos ainda aguardando devolução." : "Nenhuma pendência de devolução no momento."}</p>
+      </button>
+
+      <section class="bento-card bento-actions">
+        <div class="bento-section-title"><div><span class="eyebrow">Acesso rápido</span><h2>Ações</h2></div></div>
+        <div class="bento-action-grid">
+          <button type="button" class="bento-action primary-action" data-go="equipment"><span>${icon("equipment")}</span><b>Equipamentos</b><small>Consultar inventário</small></button>
+          <button type="button" class="bento-action" data-go="withdrawals"><span>${icon("withdrawals")}</span><b>Retiradas</b><small>Uso e devolução</small></button>
+          <button type="button" class="bento-action" data-go="reservations"><span>${icon("reservations")}</span><b>Reservas</b><small>Agenda futura</small></button>
+          <button type="button" class="bento-action" data-go="carts"><span>${icon("qr")}</span><b>QR e carrinhos</b><small>Lotes e leitura</small></button>
+        </div>
+      </section>
+
+      <section class="bento-card bento-activity">
+        <div class="bento-section-title activity-title"><div><span class="eyebrow">Movimentação</span><h2>Retiradas recentes</h2></div><button class="text-action" data-open="withdrawals">Ver histórico</button></div>
         <div class="activity-table">${renderWithdrawalRows((current || []).slice(0,6))}</div>
       </section>
     </div>
   </section>`);
+
   qsa("[data-go],[data-open]").forEach(b => b.addEventListener("click", () => navigate(b.dataset.go || b.dataset.open)));
 }
-
 function equipmentRows(rows) {
   if (!rows.length) return `<div class="empty"><strong>Nenhum equipamento.</strong><span>Os registros aparecerão aqui.</span></div>`;
   return `<div class="data-list">${rows.map(e => `<button class="data-row" data-equipment="${esc(e.id)}" type="button"><div class="data-main"><strong>${esc(e.label || e.code)}</strong><span>${esc(e.brand)} ${esc(e.model)} · ${esc(e.asset_tag || e.code)}</span></div><span class="status status-${esc(e.status)}">${esc(statusLabel(e.status))}</span><span class="data-date">${esc(dt(e.updated_at))}</span></button>`).join("")}</div>`;

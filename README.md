@@ -14,6 +14,6 @@ A migration `supabase/migrations/20260918_dasein_web_bridge_0_0_2.sql` já foi a
 
 ## Versão
 
-0.0.5 — Connected Workspace
+0.0.6 — Clean Tech / Bento Grid
 
-Retorna à composição da dashboard 0.0.3, remove o painel “Situação atual” e amplia a superfície branca principal para conectar visualmente indicadores, atalhos e movimentações. Mantém os infoboxes próprios do Dasein e o mesmo Supabase.
+Interface reconstruída do zero sem alterar o backend. A dashboard agora usa Bento Grid assimétrico, hierarquia tipográfica nova, visualização compacta do inventário, KPIs claros, ações rápidas integradas e movimentações recentes em uma faixa ampla. As telas secundárias, modais, formulários, tabelas e infoboxes seguem a mesma linguagem visual minimalista.
