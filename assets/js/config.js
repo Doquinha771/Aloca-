@@ -1,6 +1,6 @@
 window.EQUIPA_CONFIG = Object.freeze({
   appName: "Equipa",
-  version: "0.0.14",
+  version: "0.2.0 Alpha",
   legalTermsVersion: "2026.09.19",
   privacyVersion: "2026.09.19",
   controllerName: "Unidade escolar responsável pelo Equipa",

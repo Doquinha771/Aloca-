@@ -14,6 +14,8 @@ const state = {
   withdrawalsDue: new Map(),
   reservationsSearch: "",
   reservationsStatus: "",
+  bookingPage: 0,
+  bookingSearch: "",
   maintenanceSearch: "",
   maintenanceStatus: "",
   cartSearch: "",
@@ -65,7 +67,8 @@ function statusLabel(v) {
   return ({
     available: "Disponível", in_use: "Em uso", maintenance: "Manutenção", unavailable: "Indisponível",
     open: "Em aberto", returned: "Devolvida", cancelled: "Cancelada", confirmed: "Confirmada",
-    fulfilled: "Utilizada", expired: "Expirada", resolved: "Resolvida"
+    fulfilled: "Utilizada", expired: "Expirada", resolved: "Resolvida",
+    damaged: "Avaria", missing: "Não localizado", pending: "Pendente"
   })[v] ?? v ?? "—";
 }
 function roleLabel(v) { return ({ student: "Aluno", teacher: "Professor", admin: "Administrador" })[v] ?? v ?? "Usuário"; }
@@ -111,7 +114,30 @@ function errText(error) {
     EQUIPA_RESERVATION_CONFLICT: "Há uma reserva confirmada durante o período desta retirada. Ajuste o prazo ou utilize a reserva existente.",
     EQUIPA_BATCH_SIZE_INVALID: "Selecione de 1 a 60 equipamentos.",
   };
-  return map[code] || raw.replace(/^.*ERROR:\s*/i, "");
+  Object.assign(map, {
+    EQUIPA_INSUFFICIENT_STOCK: "Não há equipamentos suficientes para todas as datas solicitadas.",
+    EQUIPA_AVAILABILITY_CHANGED: "A disponibilidade mudou. Atualize a consulta e tente novamente.",
+    EQUIPA_RESERVATION_CONFLICT: "O horário foi reservado por outra pessoa. Escolha outro período.",
+    EQUIPA_QUANTITY_INVALID: "Informe de 1 a 60 equipamentos.",
+    EQUIPA_OCCURRENCES_INVALID: "Confira as datas: até 12 ocorrências, 90 dias de antecedência e 8 horas por reserva.",
+    EQUIPA_CHECKIN_WINDOW: "O check-in abre 30 minutos antes da reserva e fecha 15 minutos após o início.",
+    EQUIPA_CHECKIN_EXPIRED: "O prazo para retirar essa reserva terminou.",
+    EQUIPA_BOOKING_STATE_INVALID: "A reserva mudou de estado. Atualize a agenda.",
+    EQUIPA_RESERVATION_NOT_ACTIVE: "Esta reserva não está mais ativa.",
+    EQUIPA_RESERVATION_NOT_FOUND: "Reserva não encontrada.",
+    EQUIPA_FORBIDDEN: "Sua conta não tem permissão para realizar esta operação.",
+    EQUIPA_ITEM_ALREADY_RETURNED: "Este equipamento já foi devolvido.",
+    EQUIPA_RETURN_ITEMS_INVALID: "Selecione os equipamentos e suas condições corretamente.",
+    EQUIPA_ITEM_NOT_IN_WITHDRAWAL: "Um dos equipamentos não pertence a esta retirada.",
+    EQUIPA_WITHDRAWAL_NOT_ACTIVE: "Esta retirada já foi concluída.",
+    EQUIPA_REPORT_RANGE_INVALID: "Selecione um intervalo de até 370 dias.",
+  });
+  if (map[code]) return map[code];
+  if (error?.code || /constraint|permission denied|syntax error|invalid input|does not exist|schema cache/i.test(raw)) {
+    console.warn("Equipa: operação rejeitada pelo servidor", error?.code || "server");
+    return "Não foi possível concluir. Atualize a página e tente novamente ou procure a administração.";
+  }
+  return raw.length > 220 ? "Não foi possível concluir a operação. Tente novamente." : raw;
 }
 function notify(message, type = "info") {
   const host = qs("#toast-host");
@@ -318,12 +344,12 @@ function renderPendingApproval(){app.innerHTML=`<main class="pending-access"><di
 function shell(content) {
   cleanupTransientUi();
   const admin = state.profile?.role === "admin";
-  const mobileMoreItems = `${nav("reservations","Reservas")}${nav("history","Histórico")}${nav("carts","Carrinhos")}${admin ? nav("maintenance","Manutenção") + nav("audit","Auditoria") + nav("admin","Administração") : ""}`;
+  const mobileMoreItems = `${nav("reservations","Reservas")}${nav("history","Histórico")}${nav("carts","Carrinhos")}${admin ? nav("maintenance","Manutenção") + nav("reports","Relatórios") + nav("audit","Auditoria") + nav("admin","Administração") : ""}`;
   app.innerHTML = `<div class="app-shell">
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-brand" title="Equipa"><div class="brandmark small">E</div><div class="brand-copy"><strong>Equipa</strong><span>Gestão escolar</span></div></div>
       <nav class="nav" aria-label="Navegação principal">
-        ${nav("dashboard","Início")}${nav("equipment","Equipamentos")}${nav("withdrawals","Retiradas")}${nav("reservations","Reservas")}${nav("history","Histórico")}${nav("carts","Carrinhos")}${admin ? nav("maintenance","Manutenção") + nav("audit","Auditoria") + nav("admin","Administração") : ""}
+        ${nav("dashboard","Início")}${nav("equipment","Equipamentos")}${nav("withdrawals","Retiradas")}${nav("reservations","Reservas")}${nav("history","Histórico")}${nav("carts","Carrinhos")}${admin ? nav("maintenance","Manutenção") + nav("reports","Relatórios") + nav("audit","Auditoria") + nav("admin","Administração") : ""}
       </nav>
       <div class="sidebar-user sidebar-user-simple"><button class="logout-button" id="logout" title="Sair" aria-label="Sair">Sair</button></div>
     </aside>
@@ -369,6 +395,7 @@ async function navigate(view) {
   if (view === "carts") return renderCarts();
   if (view === "maintenance") return renderMaintenance();
   if (view === "audit") return renderAudit();
+  if (view === "reports") return renderReports();
   if (view === "admin") return renderAdmin();
   return renderDashboard();
 }
@@ -715,6 +742,90 @@ function openCheckoutModal(items) {
     m.remove();navigate("withdrawals");
   });
 }
+function buildBookingOccurrences(startValue, endValue, repeatCount) {
+  const start = new Date(startValue);
+  const end = new Date(endValue);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
+    throw new Error("O fim da reserva deve ser posterior ao início.");
+  }
+  const dates = [];
+  for (let index = 0; index < repeatCount; index++) {
+    const s = new Date(start); s.setDate(s.getDate() + 7 * index);
+    const e = new Date(end); e.setDate(e.getDate() + 7 * index);
+    dates.push({ start_at: s.toISOString(), end_at: e.toISOString() });
+  }
+  return dates;
+}
+function openQuantityReservation({ group = "", location = "" } = {}) {
+  const first = new Date(Date.now() + 60 * 60 * 1000);
+  first.setMinutes(0, 0, 0);
+  const last = new Date(first.getTime() + 100 * 60 * 1000);
+  const modal = makeModal(`<div class="panel-head"><div><span class="eyebrow">Agendamento de equipamentos</span><h2>Reservar por quantidade</h2></div><button class="icon-button" type="button" data-close>×</button></div>
+  <div class="modal-body"><form class="form-grid" id="quantity-form">
+  <label>Quando começa?<input type="datetime-local" name="start" required value="${localDateTimeValue(first)}"></label>
+  <label>Quando termina?<input type="datetime-local" name="end" required value="${localDateTimeValue(last)}"></label>
+  <label>Quantos equipamentos?<input name="quantity" type="number" required min="1" max="60" value="1"></label>
+  <label>Tipo de equipamento<select name="group"><option value="">Qualquer tipo disponível</option>${schoolGroupOptions(group)}</select></label>
+  <label>Sala / destino<input name="destination" required maxlength="160" placeholder="Ex.: Sala 12"></label>
+  <label>Turma<input name="class_name" required maxlength="120" placeholder="Ex.: 3º A"></label>
+  <label>Localização de origem (opcional)<input name="location" maxlength="160" value="${esc(location)}" placeholder="Ex.: Sala de equipamentos"></label>
+  <label>Recorrência<select name="repeat"><option value="1">Uma única vez</option><option value="2">Toda semana · 2 semanas</option><option value="4">Toda semana · 4 semanas</option><option value="8">Toda semana · 8 semanas</option><option value="12">Toda semana · 12 semanas</option></select></label>
+  <label class="span-2">Observações opcionais<textarea name="notes" maxlength="800"></textarea></label>
+  <div class="span-2 booking-explain">1. Informe período, sala e quantidade. 2. Confira a disponibilidade por dia. 3. Confirme. A seleção definitiva acontece no banco.</div>
+  <div id="quantity-preview" class="span-2" aria-live="polite"></div>
+  <div class="modal-actions span-2"><button class="button" type="button" data-close>Cancelar</button><button class="button" id="booking-preview" type="submit">Ver disponibilidade</button><button class="button primary" id="booking-confirm" type="button" disabled>Confirmar reserva</button></div>
+  </form></div>`, true);
+  const form = qs("#quantity-form", modal);
+  const preview = qs("#quantity-preview", modal);
+  const confirm = qs("#booking-confirm", modal);
+  let prepared = null;
+  const clientActionId = uid();
+  form.addEventListener("input", () => { prepared = null; confirm.disabled = true; preview.textContent = ""; });
+  form.addEventListener("change", () => { prepared = null; confirm.disabled = true; preview.textContent = ""; });
+  form.addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const f = new FormData(form);
+    const quantity = Number(f.get("quantity"));
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 60) return notify("Informe de 1 a 60 equipamentos.", "warning");
+    let occurrences;
+    try { occurrences = buildBookingOccurrences(String(f.get("start")), String(f.get("end")), Number(f.get("repeat"))); }
+    catch (error) { return notify(error.message, "warning"); }
+    const payload = { p_quantity: quantity, p_school_group: String(f.get("group") || ""),
+      p_location: String(f.get("location") || "").trim(), p_class_name: String(f.get("class_name") || "").trim(),
+      p_destination: String(f.get("destination") || "").trim(), p_occurrences: occurrences,
+      p_notes: String(f.get("notes") || "").trim() || null, p_client_action_id: clientActionId };
+    if (!payload.p_class_name || !payload.p_destination) return notify("Informe turma e destino.", "warning");
+    const button = qs("#booking-preview", modal);
+    setBusy(button, true, "Consultando…");
+    const { data, error } = await supabase.rpc("equipa_preview_quantity", {
+      p_school_group: payload.p_school_group, p_location: payload.p_location, p_occurrences: occurrences
+    });
+    setBusy(button, false);
+    if (error) return notify(errText(error), "error");
+    const results = Array.isArray(data) ? data : [];
+    const eligible = results.length === occurrences.length && results.every(x => Number(x.available) >= quantity);
+    preview.innerHTML = `<div class="booking-preview"><strong>${eligible ? "Disponibilidade preliminar confirmada" : "Ajuste sua solicitação"}</strong>
+      ${results.map(x => `<div class="booking-preview-row"><span>${esc(dt(x.start_at))}</span><span class="${Number(x.available)<quantity ? 'booking-shortage' : ''}">${Number(x.available)} disponíveis / ${quantity} solicitados</span></div>`).join("")}
+      <small>A disponibilidade é verificada novamente no momento da confirmação. Nenhuma reserva parcial é criada automaticamente.</small></div>`;
+    prepared = eligible ? payload : null;
+    confirm.disabled = !eligible;
+  });
+  confirm.addEventListener("click", async () => {
+    if (!prepared) return;
+    setBusy(confirm, true, "Confirmando…");
+    const { data, error } = await supabase.rpc("equipa_reserve_quantity", prepared);
+    setBusy(confirm, false);
+    if (error) return notify(errText(error), "error");
+    if (!data?.ok) {
+      prepared = null; confirm.disabled = true;
+      const date = data?.start_at ? ` em ${dt(data.start_at)}` : "";
+      return notify(`Você solicitou ${data?.requested ?? "?"} equipamentos, mas apenas ${data?.available ?? "?"} estavam disponíveis${date}. Nenhuma reserva foi criada.`, "warning");
+    }
+    notify(`${data.quantity} equipamento(s) reservado(s) em ${data.occurrences} ocorrência(s).`, "success");
+    modal.remove(); state.bookingPage = 0; navigate("reservations");
+  });
+}
+
 function openReservationModal(e) {
   const now=new Date();now.setMinutes(now.getMinutes()-now.getTimezoneOffset()+30);const start=now.toISOString().slice(0,16);const endD=new Date(now.getTime()+60*60*1000);const end=endD.toISOString().slice(0,16);
   const m=makeModal(`<div class="panel-head"><div><span class="eyebrow">Reserva futura</span><h2>${esc(e.label||e.code)}</h2></div><button class="icon-button" data-close>×</button></div><div class="modal-body"><form id="reservation-form" class="form-grid"><label>Início<input type="datetime-local" name="start" required value="${start}"></label><label>Fim<input type="datetime-local" name="end" required value="${end}"></label><label>Turma<input name="class_name" required maxlength="120"></label><label>Destino<input name="destination" required maxlength="160"></label><label class="span-2">Observação<textarea name="notes" maxlength="800"></textarea></label><div class="modal-actions span-2"><button class="button" data-close type="button">Cancelar</button><button class="button primary" type="submit">Reservar</button></div></form></div>`,true);
@@ -760,40 +871,90 @@ async function loadWithdrawals() {
   qsa("[data-withdrawal-id]",h).forEach(b=>b.addEventListener("click",()=>openWithdrawalDetail(b.dataset.withdrawalId)));
 }
 function renderWithdrawalRows(rows) { if(!rows.length)return `<div class="empty"><strong>Nenhuma retirada encontrada.</strong><span>As movimentações compatíveis com seu perfil aparecem aqui.</span></div>`;return `<div class="data-list">${rows.map(r=>`<button class="data-row" type="button" data-withdrawal-id="${esc(r.withdrawal_id)}"><div class="data-main"><strong>${esc(r.class_name||"Sem turma")} · ${esc(r.destination||"Sem destino")}</strong><span>${esc(r.responsible_name||"")}${r.student_name?` · Aluno: ${esc(r.student_name)}`:""} · ${Number(r.pending_count||0)} pendente(s) de ${Number(r.total_count||0)}${r.due_at?` · Previsão: ${esc(dt(r.due_at))}`:""}</span></div><span class="status status-${r.status==="open"&&r.due_at&&new Date(r.due_at)<new Date()?"maintenance":esc(r.status)}">${r.status==="open"&&r.due_at&&new Date(r.due_at)<new Date()?"Atrasada":esc(statusLabel(r.status))}</span><span class="data-date">${r.returned_at?`Devolvido ${esc(dt(r.returned_at))}`:esc(dt(r.withdrawn_at))}</span></button>`).join("")}</div>`; }
-async function openWithdrawalDetail(withdrawalId){
+async function openWithdrawalDetail(withdrawalId) {
   const [{data:w,error:we},{data:items,error:ie}] = await Promise.all([
     supabase.from("withdrawals").select("id,class_name,destination,responsible_name,student_name,status,withdrawn_at,returned_at,due_at").eq("id",withdrawalId).single(),
-    supabase.from("withdrawal_items").select("id,equipment_id,created_at,returned_at,equipments(id,code,label,brand,model,school_group)").eq("withdrawal_id",withdrawalId).order("id")
+    supabase.from("withdrawal_items").select("id,equipment_id,created_at,returned_at,return_condition,equipments(id,code,label,brand,model,school_group)").eq("withdrawal_id",withdrawalId).order("id")
   ]);
-  if(we||ie)return notify(errText(we||ie),"error");
-  const m=makeModal(`<div class="panel-head"><div><span class="eyebrow">Retirada ${esc(withdrawalId)}</span><h2>${esc(w.class_name||"Sem turma")} · ${esc(w.destination||"Sem destino")}</h2></div><button class="icon-button" data-close>×</button></div><div class="modal-body"><div class="withdrawal-meta">${detail("Responsável",w.responsible_name)}${detail("Aluno",w.student_name)}${detail("Retirada",dt(w.withdrawn_at))}${detail("Previsão de devolução",dt(w.due_at))}${detail("Devolução final",dt(w.returned_at))}</div><div class="return-list">${(items||[]).map(i=>`<div class="return-item"><div><strong>${esc(i.equipments?.label||i.equipments?.code||"Equipamento")}</strong><span>${esc(schoolGroupLabel(i.equipments?.school_group))} · ${esc(i.equipments?.brand||"")} ${esc(i.equipments?.model||"")}</span></div>${i.returned_at?`<span class="return-date">Devolvido em ${esc(dt(i.returned_at))}</span>`:`<button class="button primary small" type="button" data-return-item="${esc(i.equipment_id)}">Registrar devolução</button>`}</div>`).join("")}</div></div>`,true);
-  qsa("[data-return-item]",m).forEach(b=>b.addEventListener("click",async()=>{setBusy(b,true,"Registrando…");const {error}=await supabase.rpc("return_equipment",{p_equipment_id:b.dataset.returnItem,p_client_action_id:uid()});setBusy(b,false);if(error)return notify(errText(error),"error");notify("Devolução registrada com data e horário.","success");m.remove();await loadWithdrawals();openWithdrawalDetail(withdrawalId)}));
+  if (we || ie) return notify(errText(we || ie),"error");
+  const pending = (items || []).filter(x => !x.returned_at);
+  const m = makeModal(`<div class="panel-head"><div><span class="eyebrow">Retirada ${esc(withdrawalId)}</span><h2>${esc(w.class_name || "Sem turma")} · ${esc(w.destination || "Sem destino")}</h2></div><button class="icon-button" data-close>×</button></div>
+    <div class="modal-body"><div class="withdrawal-meta">${detail("Responsável",w.responsible_name)}${detail("Aluno",w.student_name)}${detail("Retirada",dt(w.withdrawn_at))}${detail("Previsão",dt(w.due_at))}${detail("Encerramento",dt(w.returned_at))}</div>
+    <p class="muted">Confira cada equipamento. Avaria abre manutenção; não localizado continua pendente até a conferência.</p>
+    <div class="return-list">${(items || []).map(i => `<div class="return-item"><div><strong>${esc(i.equipments?.label||i.equipments?.code||"Equipamento")}</strong><span>${esc(schoolGroupLabel(i.equipments?.school_group))} · ${esc(i.equipments?.code||"")}</span></div>
+      ${i.returned_at ? `<span class="return-date">${i.return_condition==='damaged'?'Avaria registrada':'Devolvido'} em ${esc(dt(i.returned_at))}</span>` : `<label class="return-choice">Situação<select data-return-equipment="${esc(i.equipment_id)}"><option value="pending" ${i.return_condition!=='missing'?'selected':''}>Pendente</option><option value="returned">Devolvido normalmente</option><option value="damaged">Devolvido com avaria</option><option value="missing" ${i.return_condition==='missing'?'selected':''}>Não localizado</option></select></label>`}</div>`).join("")}</div>
+    ${pending.length ? `<div class="modal-actions"><button class="button" type="button" data-close>Voltar</button><button class="button primary" id="return-batch">Confirmar conferência</button></div>`:'<p class="muted">Todos os itens desta retirada foram conferidos.</p>'}
+    </div>`,true);
+  const action=uid();
+  qs("#return-batch",m)?.addEventListener("click",async()=>{
+    const entries=qsa("[data-return-equipment]",m).map(sel=>({equipment_id:sel.dataset.returnEquipment,condition:sel.value}));
+    if (!entries.some(x=>x.condition!=='pending')) return notify("Selecione ao menos uma devolução, avaria ou item não localizado.","warning");
+    const button=qs("#return-batch",m);setBusy(button,true,"Registrando…");
+    const {data,error}=await supabase.rpc("equipa_return_items",{p_withdrawal_id:Number(withdrawalId),p_items:entries,p_client_action_id:action});setBusy(button,false);
+    if(error)return notify(errText(error),"error");
+    notify(data?.complete?"Retirada encerrada após conferência.":`${data?.pending??"?"} equipamento(s) ainda pendente(s).`,"success");
+    m.remove();await loadWithdrawals();openWithdrawalDetail(withdrawalId);
+  });
 }
 
+
 async function renderReservations() {
-  state.view="reservations";
-  const filterCount = activeFilterCount([state.reservationsStatus]);
-  shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Agenda</span><h2>Reservas futuras</h2><p>Organize a utilização dos equipamentos sem conflitos de horário.</p></div></div><div class="toolbar workspace-toolbar"><div class="toolbar-cluster"><input id="reservation-search" class="search" type="search" value="${esc(state.reservationsSearch)}" placeholder="Buscar equipamento, turma, destino ou período"><button class="filter-button ${filterCount ? 'has-active active' : ''}" id="reservation-filter-toggle" type="button" aria-expanded="${filterCount ? 'true' : 'false'}"><span>Filtros</span>${filterBadge(filterCount)}</button></div></div><div class="filter-drawer" id="reservation-filter-panel"><div class="filter-grid"><label>Status<select id="reservation-status"><option value="">Todos</option><option value="confirmed" ${state.reservationsStatus==='confirmed'?'selected':''}>Confirmada</option><option value="fulfilled" ${state.reservationsStatus==='fulfilled'?'selected':''}>Utilizada</option><option value="cancelled" ${state.reservationsStatus==='cancelled'?'selected':''}>Cancelada</option><option value="expired" ${state.reservationsStatus==='expired'?'selected':''}>Expirada</option></select></label></div><div class="filter-actions"><button class="button small ghost" id="reservation-filter-clear" type="button">Limpar filtros</button><button class="button primary small" id="reservation-filter-apply" type="button">Aplicar</button></div></div><div id="reservations"><div class="loading">Carregando reservas…</div></div></section>`);
-  const h=qs("#reservations");
-  let data, error;
-  try {
-    ({data,error}=await supabase.from("reservations").select("id,equipment_id,user_id,class_name,destination,start_at,end_at,notes,status,withdrawal_id,created_at,equipments(code,label,brand,model,status)").order("start_at",{ascending:true}).limit(400));
-  } catch (failure) { error=failure; }
-  if(!h)return;
-  if(error){h.innerHTML=`<div class="empty"><strong>Não foi possível carregar as reservas.</strong><span>${esc(errText(error))}</span><button type="button" class="button" id="retry-reservations">Tentar novamente</button></div>`;qs("#retry-reservations")?.addEventListener("click",renderReservations);return}
+  state.view = "reservations";
+  shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Agenda</span><h2>Reservas</h2><p>Solicite equipamentos por quantidade, confira datas e faça o check-in antes da retirada.</p></div><button class="button primary" id="new-quantity-booking">Nova reserva</button></div>
+    <div class="toolbar workspace-toolbar"><div class="toolbar-cluster"><input id="booking-search" class="search" placeholder="Buscar turma, equipamento ou destino" value="${esc(state.bookingSearch)}"><select class="booking-status-filter" id="booking-status"><option value="">Todas as situações</option><option value="confirmed" ${state.reservationsStatus==='confirmed'?'selected':''}>Confirmadas</option><option value="fulfilled" ${state.reservationsStatus==='fulfilled'?'selected':''}>Retiradas</option><option value="cancelled" ${state.reservationsStatus==='cancelled'?'selected':''}>Canceladas</option><option value="expired" ${state.reservationsStatus==='expired'?'selected':''}>Expiradas</option></select></div></div>
+    <div id="reservations"><div class="loading">Carregando agenda…</div></div></section>`);
+  qs("#new-quantity-booking")?.addEventListener("click", () => openQuantityReservation());
+  let debounce;
+  qs("#booking-search")?.addEventListener("input", e => { clearTimeout(debounce); debounce = setTimeout(() => { state.bookingSearch = e.target.value; loadBookingSummary(); }, 200); });
+  qs("#booking-status")?.addEventListener("change", e => { state.reservationsStatus = e.target.value; loadBookingSummary(); });
+  await loadBookingSummary();
+}
+async function loadBookingSummary() {
+  const host = qs("#reservations"); if (!host) return;
+  await supabase.rpc("equipa_expire_reservations");
+  const { data, error } = await supabase.rpc("equipa_booking_summary", { p_page: state.bookingPage });
+  if (!host) return;
+  if (error) { host.innerHTML = `<div class="empty"><strong>Não foi possível abrir a agenda.</strong><span>${esc(errText(error))}</span><button class="button" id="retry-bookings">Tentar novamente</button></div>`;
+    qs("#retry-bookings")?.addEventListener("click", loadBookingSummary); return; }
   let rows = data || [];
-  rows = rows.map(r => ({ ...r, computed_status: r.status === 'confirmed' && new Date(r.end_at) < new Date() ? 'expired' : r.status }));
-  rows = smartFilter(rows, state.reservationsSearch, r => [r.equipments?.label, r.equipments?.code, r.class_name, r.destination, r.notes, statusLabel(r.computed_status), dt(r.start_at), dt(r.end_at)]);
-  if (state.reservationsStatus) rows = rows.filter(r => r.computed_status === state.reservationsStatus);
-  if(!rows.length){h.innerHTML=`<div class="empty"><strong>Nenhuma reserva.</strong><span>Abra um equipamento disponível e escolha Reservar.</span></div>`;} else {
-    h.innerHTML=`<div class="data-list">${rows.map(r=>{const st=r.computed_status;const expired=st==='expired';return `<div class="data-row"><div class="data-main"><strong>${esc(r.equipments?.label||r.equipments?.code||"Equipamento")}</strong><span>${esc(r.class_name)} · ${esc(r.destination)} · ${esc(dt(r.start_at))} até ${esc(dt(r.end_at))}</span></div><span class="status status-${esc(st)}">${esc(statusLabel(st))}</span><div class="row-actions">${r.status==="confirmed"&&!expired?`<button class="button small" data-cancel-res="${r.id}">Cancelar</button>${r.user_id === state.profile.id ? `<button class="button primary small" data-use-res="${r.id}">Retirar</button>` : ""}`:""}</div></div>`}).join("")}</div>`;
-  }
-  let timer; qs("#reservation-search")?.addEventListener("input", e => { clearTimeout(timer); timer=setTimeout(()=>{state.reservationsSearch=e.target.value; renderReservations();}, 180); });
-  wireFilterToggle("reservation-filter-toggle", "reservation-filter-panel");
-  qs("#reservation-filter-apply")?.addEventListener("click", () => { state.reservationsStatus = qs("#reservation-status")?.value || ""; renderReservations(); });
-  qs("#reservation-filter-clear")?.addEventListener("click", () => { state.reservationsStatus = ""; renderReservations(); });
-  qsa("[data-cancel-res]").forEach(b=>b.addEventListener("click",async()=>{const ok=await confirmAction({title:"Cancelar reserva?",message:"O horário ficará disponível novamente para este equipamento.",confirmText:"Cancelar reserva",danger:true});if(!ok)return;setBusy(b,true,"…");const {error}=await supabase.rpc("cancel_reservation",{p_reservation_id:Number(b.dataset.cancelRes)});setBusy(b,false);if(error)return notify(errText(error),"error");notify("Reserva cancelada.","success");renderReservations()}));
-  qsa("[data-use-res]").forEach(b=>b.addEventListener("click",async()=>{setBusy(b,true,"Retirando…");const {error}=await supabase.rpc("checkout_reservation_with_due",{p_reservation_id:Number(b.dataset.useRes),p_client_action_id:uid()});setBusy(b,false);if(error)return notify(errText(error),"error");notify("Reserva convertida em retirada.","success");navigate("withdrawals")}));
+  const total = Number(rows[0]?.total_rows || 0);
+  rows = smartFilter(rows, state.bookingSearch, x => [x.class_name, x.destination, x.representative_code, x.status, statusLabel(x.status)]);
+  if (state.reservationsStatus) rows = rows.filter(x => x.status === state.reservationsStatus);
+  if (!rows.length) host.innerHTML = `<div class="empty"><strong>Nenhuma reserva nesta página.</strong><span>Use Nova reserva para solicitar um período. Busca e filtro atuam nesta página.</span></div>`;
+  else host.innerHTML = `<div class="data-list">${rows.map(r => {
+    const windowStart = new Date(r.start_at).getTime(); const windowEnd = new Date(r.end_at).getTime(); const now = Date.now();
+    const canCheckin = r.status === "confirmed" && !r.checked_in_at && now >= windowStart - 30*60000 && now <= windowStart + 15*60000;
+    const canCheckout = r.status === "confirmed" && now >= windowStart - 30*60000 && now < windowEnd && (r.checked_in_at || now <= windowStart + 15*60000);
+    const canCancel = r.status === "confirmed" && windowStart > now;
+    const recurring = Boolean(r.series_id);
+    return `<div class="data-row booking-row"><div class="data-main"><strong>${Number(r.quantity)} equipamento(s) · ${esc(r.class_name)}</strong>
+      <span>${esc(r.destination)} · ${esc(dt(r.start_at))} até ${esc(dt(r.end_at))} · Ex.: ${esc(r.representative_code || "equipamento")}</span>
+      ${recurring ? '<small>Série semanal</small>' : ''}${r.checked_in_at ? '<small>Check-in confirmado</small>' : ''}</div>
+      <span class="status status-${esc(r.status)}">${esc(statusLabel(r.status))}</span>
+      <div class="booking-actions">${canCheckin ? `<button class="button small" data-book-checkin="${r.id}">Check-in</button>` : ''}
+      ${canCheckout ? `<button class="button primary small" data-book-checkout="${r.id}">Retirar lote</button>` : ''}
+      ${canCancel ? `<button class="button small danger" data-book-cancel="${r.id}" data-recurring="${recurring}">Cancelar</button>` : ''}</div></div>`;
+  }).join("")}</div>`;
+  host.insertAdjacentHTML("beforeend", `<div class="pagination"><span>${total} reserva(s) agrupada(s) · página ${state.bookingPage+1}</span><div><button class="button small" id="booking-prev" ${state.bookingPage===0?'disabled':''}>Anterior</button><button class="button small" id="booking-next" ${(state.bookingPage+1)*30>=total?'disabled':''}>Próxima</button></div></div>`);
+  qs("#booking-prev")?.addEventListener("click", () => {state.bookingPage--;loadBookingSummary();});
+  qs("#booking-next")?.addEventListener("click", () => {state.bookingPage++;loadBookingSummary();});
+  qsa("[data-book-checkin]",host).forEach(b=>b.addEventListener("click",async()=>{
+    setBusy(b,true,"Confirmando…"); const {error}=await supabase.rpc("equipa_booking_action",{p_reservation_id:Number(b.dataset.bookCheckin),p_action:"checkin",p_scope:"occurrence"});setBusy(b,false);
+    if(error)return notify(errText(error),"error");notify("Check-in registrado.","success");loadBookingSummary();
+  }));
+  qsa("[data-book-checkout]",host).forEach(b=>b.addEventListener("click",async()=>{
+    const ok=await confirmAction({title:"Confirmar retirada?",message:"Todos os equipamentos deste horário serão registrados numa única retirada, com previsão de devolução.",confirmText:"Registrar retirada"});if(!ok)return;
+    setBusy(b,true,"Retirando…");const {error}=await supabase.rpc("equipa_checkout_booking",{p_reservation_id:Number(b.dataset.bookCheckout),p_client_action_id:uid()});setBusy(b,false);
+    if(error)return notify(errText(error),"error");notify("Retirada registrada.","success");navigate("withdrawals");
+  }));
+  qsa("[data-book-cancel]",host).forEach(b=>b.addEventListener("click",()=>openBookingCancellation(Number(b.dataset.bookCancel),b.dataset.recurring==="true")));
+}
+function openBookingCancellation(id, recurring) {
+  const m=makeModal(`<div class="panel-head"><div><span class="eyebrow">Agenda</span><h2>Cancelar reserva</h2></div><button class="icon-button" data-close>×</button></div>
+    <div class="modal-body"><p class="muted">Os registros anteriores permanecem no histórico. Apenas agendamentos ainda não iniciados serão cancelados.</p>
+    ${recurring ? `<label>Alcance<select id="booking-cancel-scope"><option value="occurrence">Somente esta ocorrência</option><option value="future">Esta e as próximas</option><option value="series">Toda a série futura</option></select></label>` : ''}
+    <div class="modal-actions"><button class="button" data-close>Voltar</button><button class="button danger" id="booking-confirm-cancel">Confirmar cancelamento</button></div></div>`);
+  qs("#booking-confirm-cancel",m)?.addEventListener("click",async()=>{const button=qs("#booking-confirm-cancel",m);setBusy(button,true,"Cancelando…");const {error}=await supabase.rpc("equipa_booking_action",{p_reservation_id:id,p_action:"cancel",p_scope:qs("#booking-cancel-scope",m)?.value||"occurrence"});setBusy(button,false);if(error)return notify(errText(error),"error");m.remove();notify("Reserva cancelada, histórico preservado.","success");loadBookingSummary();});
 }
 
 
@@ -861,6 +1022,29 @@ async function deactivateCart(record){const ok=await confirmAction({title:"Desat
 
 async function renderMaintenance(){if(state.profile.role!=="admin")return navigate("dashboard");state.view="maintenance";const filterCount=activeFilterCount([state.maintenanceStatus]);shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Oficina</span><h2>Histórico de manutenção</h2><p>Ocorrências técnicas e intervenções ficam organizadas em uma única linha do tempo.</p></div></div><div class="toolbar workspace-toolbar"><div class="toolbar-cluster"><input id="maintenance-search" class="search" type="search" value="${esc(state.maintenanceSearch)}" placeholder="Buscar equipamento, título ou observação"><button class="filter-button ${filterCount ? 'has-active active' : ''}" id="maintenance-filter-toggle" type="button" aria-expanded="${filterCount ? 'true' : 'false'}">${icon("filter")}<span>Filtros</span>${filterBadge(filterCount)}</button></div></div><div class="filter-drawer" id="maintenance-filter-panel"><div class="filter-grid"><label>Status<select id="maintenance-status"><option value="">Todos</option><option value="open" ${state.maintenanceStatus==='open'?'selected':''}>Aberta</option><option value="resolved" ${state.maintenanceStatus==='resolved'?'selected':''}>Resolvida</option></select></label></div><div class="filter-actions"><button class="button small ghost" id="maintenance-filter-clear" type="button">Limpar filtros</button><button class="button primary small" id="maintenance-filter-apply" type="button">Aplicar</button></div></div><div id="maintenance"><div class="loading">Carregando…</div></div></section>`);const {data,error}=await supabase.from("maintenance_events").select("id,equipment_id,title,notes,resolution,status,opened_at,closed_at,equipments(code,label,brand,model)").order("opened_at",{ascending:false}).limit(300);const h=qs("#maintenance");if(error){h.innerHTML=`<div class="empty"><strong>Erro.</strong><span>${esc(errText(error))}</span></div>`;return}let rows=data||[];rows=smartFilter(rows,state.maintenanceSearch,x=>[x.title,x.notes,x.resolution,x.equipments?.label,x.equipments?.code,x.equipments?.brand,x.equipments?.model,statusLabel(x.status)]);if(state.maintenanceStatus)rows=rows.filter(x=>x.status===state.maintenanceStatus);if(!rows.length){h.innerHTML=`<div class="empty"><strong>Nenhuma manutenção registrada.</strong><span>Abra um equipamento e escolha Manutenção.</span></div>`;}else{h.innerHTML=`<div class="data-list">${rows.map(x=>`<div class="data-row"><div class="data-main"><strong>${esc(x.equipments?.label||x.equipments?.code)} · ${esc(x.title)}</strong><span>${esc(x.equipments?.brand||"")} ${esc(x.equipments?.model||"")} · aberta ${esc(dt(x.opened_at))}</span></div><span class="status status-${esc(x.status)}">${esc(statusLabel(x.status))}</span><div class="row-actions">${x.status==="open"?`<button class="button primary small" data-resolve="${x.id}">Concluir</button>`:""}</div></div>`).join("")}</div>`;qsa("[data-resolve]").forEach(b=>b.addEventListener("click",()=>resolveMaintenance(Number(b.dataset.resolve))));}let timer;qs("#maintenance-search")?.addEventListener("input",e=>{clearTimeout(timer);timer=setTimeout(()=>{state.maintenanceSearch=e.target.value;renderMaintenance()},180)});wireFilterToggle("maintenance-filter-toggle", "maintenance-filter-panel");qs("#maintenance-filter-apply")?.addEventListener("click",()=>{state.maintenanceStatus=qs("#maintenance-status")?.value||"";renderMaintenance()});qs("#maintenance-filter-clear")?.addEventListener("click",()=>{state.maintenanceStatus="";renderMaintenance()});}
 function resolveMaintenance(id){const m=makeModal(`<div class="panel-head"><div><span class="eyebrow">Manutenção</span><h2>Concluir manutenção</h2></div><button class="icon-button" data-close>×</button></div><div class="modal-body"><form id="resolve-form" class="auth-form"><label>Resolução<textarea name="resolution" maxlength="1200" placeholder="O que foi feito"></textarea></label><div class="modal-actions"><button class="button" data-close type="button">Cancelar</button><button class="button primary" type="submit">Concluir</button></div></form></div>`);qs("#resolve-form",m).addEventListener("submit",async e=>{e.preventDefault();const b=qs('button[type="submit"]',e.currentTarget);setBusy(b,true,"Concluindo…");const f=new FormData(e.currentTarget);const {error}=await supabase.rpc("resolve_maintenance",{p_event_id:id,p_resolution:f.get("resolution").trim()||null});setBusy(b,false);if(error)return notify(errText(error),"error");notify("Manutenção concluída.","success");m.remove();renderMaintenance()})}
+
+async function renderReports() {
+  if(state.profile.role!=="admin") return navigate("dashboard");
+  state.view="reports";
+  const end=new Date();const from=new Date(Date.now()-30*86400000);
+  shell(`<section class="panel workspace-panel"><div class="panel-head workspace-head"><div><span class="eyebrow">Indicadores operacionais</span><h2>Relatórios</h2><p>Indicadores calculados no PostgreSQL, sem baixar todo o histórico.</p></div></div>
+    <div class="toolbar workspace-toolbar"><div class="toolbar-cluster"><label>De<input id="report-from" type="date" value="${from.toISOString().slice(0,10)}"></label><label>Até<input id="report-to" type="date" value="${end.toISOString().slice(0,10)}"></label><button class="button primary" id="report-apply">Atualizar</button></div></div>
+    <div id="report-results"><div class="loading">Calculando indicadores…</div></div></section>`);
+  qs("#report-apply")?.addEventListener("click",loadReports);
+  await loadReports();
+}
+async function loadReports() {
+  const host=qs("#report-results");if(!host)return;
+  const start=qs("#report-from")?.value;const finish=qs("#report-to")?.value;
+  if(!start||!finish||start>finish) return notify("Confira o intervalo do relatório.","warning");
+  const startDate=new Date(start+"T00:00:00");const endDate=new Date(finish+"T00:00:00");endDate.setDate(endDate.getDate()+1);
+  const {data,error}=await supabase.rpc("equipa_admin_reports",{p_from:startDate.toISOString(),p_to:endDate.toISOString()});
+  if(error){host.innerHTML=`<div class="empty"><strong>Não foi possível calcular o relatório.</strong><span>${esc(errText(error))}</span></div>`;return;}
+  const fields=[["Reservas",data.reservations],["Cancelamentos",data.cancelled],["Reservas expiradas",data.expired],["Retiradas",data.withdrawals],["Equipamentos utilizados",data.used_equipment],["Itens devolvidos",data.returned],["Com avaria",data.damaged],["Retiradas atrasadas em aberto",data.late_open],["Manutenções abertas",data.maintenance_open],["Duração média (min)",data.avg_minutes??"—"]];
+  host.innerHTML=`<div class="report-grid">${fields.map(([label,value])=>`<div class="report-item"><span>${esc(label)}</span><strong>${esc(value ?? 0)}</strong></div>`).join("")}</div>
+    <div class="panel-head"><h3>Equipamentos mais utilizados no período</h3></div>
+    <div class="data-list">${(data.top_equipment||[]).map((x,i)=>`<div class="data-row"><strong>${i+1}. ${esc(x.code)}</strong><span>${Number(x.uses)} retirada(s)</span></div>`).join("")||'<div class="empty">Sem movimentações neste período.</div>'}</div>`;
+}
 
 async function renderAdmin(){if(state.profile.role!=="admin")return navigate("dashboard");state.view="admin";shell(`<section class="admin-workspace"><div class="admin-titlebar"><div><span class="eyebrow">Administração</span><h2>Central administrativa</h2><p>Aprovação de contas, cargos, capacidade e ferramentas do inventário.</p></div></div><div class="split admin-grid"><section class="panel admin-users"><div class="panel-head"><div><span class="eyebrow">Pessoas</span><h2>Usuários e acessos</h2></div></div><div id="users"><div class="loading">Carregando usuários…</div></div></section><div class="stack admin-side"><section class="panel"><div class="panel-head"><div><span class="eyebrow">Armazenamento</span><h2>Capacidade do banco</h2></div></div><div id="capacity"><div class="loading">Medindo…</div></div></section><section class="panel"><div class="panel-head"><div><span class="eyebrow">Ferramentas</span><h2>Inventário</h2></div></div><div class="panel-pad quick-grid"><div class="quick-card"><strong>Importar planilha</strong><span>Valida CSV/XLSX no navegador.</span><button class="button small" id="admin-import">Importar</button></div><div class="quick-card"><strong>Exportar inventário</strong><span>Gera uma planilha do cadastro atual.</span><button class="button small" id="admin-export">Exportar</button></div><div class="quick-card"><strong>QRs para impressão</strong><span>Folha dos equipamentos ativos.</span><button class="button small" id="admin-qrs">Imprimir</button></div><div class="quick-card"><strong>QRs em arquivos</strong><span>Baixa todos os QR Codes em um ZIP.</span><button class="button small" id="admin-download-qrs">Baixar todos</button></div><div class="quick-card"><strong>Auditoria</strong><span>Consulte alterações e operações registradas.</span><button class="button small" id="admin-audit">Abrir auditoria</button></div></div></section></div></div></section>`);qs("#admin-import")?.addEventListener("click",openImportModal);qs("#admin-export")?.addEventListener("click",exportEquipments);qs("#admin-qrs")?.addEventListener("click",printQrBatch);qs("#admin-download-qrs")?.addEventListener("click",downloadAllEquipmentQrs);qs("#admin-audit")?.addEventListener("click",()=>navigate("audit"));await Promise.all([loadAdminUsers(),loadCapacity()]);}
 async function loadAdminUsers(){const {data,error}=await supabase.rpc("admin_user_list_safe");const h=qs("#users");if(!h)return;if(error){h.innerHTML=`<div class="empty"><strong>Erro ao carregar usuários.</strong><span>${esc(errText(error))}</span></div>`;return}const now=Date.now();h.innerHTML=`<div class="data-list">${(data||[]).map(u=>{const banned=Boolean(u.banned_until&&new Date(u.banned_until).getTime()>now);const rec={id:u.id,full_name:u.full_name,role:u.role,masked_email:u.masked_email,is_active:u.is_active,is_banned:banned,banned_until:u.banned_until};return `<button class="data-row user-row" type="button" data-user='${esc(JSON.stringify(rec))}'><div class="data-main"><strong>${esc(u.full_name||"Usuário")}</strong><span>${esc(u.masked_email||"—")} · ${esc(roleLabel(u.role))}</span></div><span class="status ${!u.is_active?'status-maintenance':banned?'status-cancelled':'status-available'}">${!u.is_active?'Pendente/removido':banned?'Banido':'Ativo'}</span><span class="data-date">${esc(dateOnly(u.created_at))}</span></button>`}).join("")}</div>`;qsa("[data-user]").forEach(b=>b.addEventListener("click",()=>openUserForm(JSON.parse(b.dataset.user))));}

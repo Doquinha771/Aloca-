@@ -4,9 +4,9 @@
 
 **Gestão responsável de equipamentos escolares.**
 
-![Versão](https://img.shields.io/badge/vers%C3%A3o-0.0.14-5d666d?style=for-the-badge)
+![Versão](https://img.shields.io/badge/vers%C3%A3o-0.2.0--alpha-5d666d?style=for-the-badge)
 ![Plataforma](https://img.shields.io/badge/plataforma-web-69737a?style=for-the-badge)
-![Estado](https://img.shields.io/badge/estado-piloto%20escolar-78838a?style=for-the-badge)
+![Estado](https://img.shields.io/badge/estado-alpha%20em%20testes-78838a?style=for-the-badge)
 ![Privacidade](https://img.shields.io/badge/privacidade-LGPD-626d74?style=for-the-badge)
 
 </div>
@@ -34,6 +34,10 @@ Fila de retiradas atrasadas
 Exclusão segura de cadastros sem histórico
 Retirada de circulação de equipamento com histórico
 Reservas futuras
+Reserva por quantidade e recorrência semanal limitada
+Check-in e expiração sem apagar histórico
+Devolução em lote com conferência de avarias e pendências
+Relatórios operacionais agregados
 Histórico por equipamento, pessoa e turma
 Controle de manutenção
 Importação e exportação de inventário
@@ -96,10 +100,10 @@ A área de auditoria permite acompanhar eventos relevantes, como alterações no
 
 ```text
 Nome        Equipa
-Versão      0.0.13 · Hotfix 3
+Versão      0.2.0 Alpha
 Plataforma  Web responsiva
 Uso         Gestão de equipamentos escolares
-Estado      Piloto / desenvolvimento
+Estado      Alpha · testes e piloto restrito
 ```
 
 ---
