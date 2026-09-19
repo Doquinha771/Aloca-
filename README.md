@@ -4,7 +4,7 @@
 
 **Gestão responsável de equipamentos escolares.**
 
-![Versão](https://img.shields.io/badge/vers%C3%A3o-0.0.13%20Hotfix%203-5d666d?style=for-the-badge)
+![Versão](https://img.shields.io/badge/vers%C3%A3o-0.0.14-5d666d?style=for-the-badge)
 ![Plataforma](https://img.shields.io/badge/plataforma-web-69737a?style=for-the-badge)
 ![Estado](https://img.shields.io/badge/estado-piloto%20escolar-78838a?style=for-the-badge)
 ![Privacidade](https://img.shields.io/badge/privacidade-LGPD-626d74?style=for-the-badge)
@@ -27,9 +27,12 @@ QR Code permanente por equipamento
 QR Code por carrinho
 Leitura de QR pelo celular
 Download de QR Codes em lote
-Retirada individual
+Retirada individual com prazo de devolução
 Retirada seletiva por carrinho
 Devolução com data e horário
+Fila de retiradas atrasadas
+Exclusão segura de cadastros sem histórico
+Retirada de circulação de equipamento com histórico
 Reservas futuras
 Histórico por equipamento, pessoa e turma
 Controle de manutenção

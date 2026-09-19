@@ -218,6 +218,7 @@ class QueryBuilder {
   update(value) { this.method = "PATCH"; this.body = value; return this; }
   delete() { this.method = "DELETE"; return this; }
   eq(column, value) { this.filters.push([column, `eq.${formatFilterValue(value)}`]); return this; }
+  or(expression) { this.filters.push(["or", `(${String(expression)})`]); return this; }
   in(column, values) {
     const encoded = (values || []).map(v => `"${String(v).replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`).join(",");
     this.filters.push([column, `in.(${encoded})`]);
